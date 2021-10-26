@@ -296,8 +296,8 @@ HRESULT InitDevice()
 
     // 11 API를 사용하지만 GPU featrue level에 맞게, hardware적인 기능만 사용할 수 있게 device를 잡아줌 
     hr = D3D11CreateDevice(nullptr, driverType, nullptr, createDeviceFlags, featureLevels, numFeatureLevels, // function의 parameter, feature set이 array로 들어가며 이는 feature set을 앞에서부터 시도하면서 해당 PC의 GPU가 어떤 featrue level을 지원하는지를 확인함 
-        D3D11_SDK_VERSION, &g_pd3dDevice, &g_featureLevel, &g_pImmediateContext);                            // device의 pointer, 선택된 featurelevel, device를 직접적으로 사용하기 위한 context device pointer
-
+        D3D11_SDK_VERSION, &g_pd3dDevice, &g_featureLevel, &g_pImmediateContext);                            // device의 pointer(device), 선택된 featurelevel, device를 직접적으로 사용하기 위한 context device pointer -> device 생성시 무조건 하나 이상의 context도 할당해야함 
+                                                                                                             // g_pImmediateContext -> backward가 아닌 foreward ground에서 GPU command를 위한 pointer 
     // Obtain DXGI factory from decive (since we used nullptr for pAdater above)
     // DXGI를 직접적으로 handling 할 필요 없기 때문에 해당 logic을 그대로 사용하면 됨 
     IDXGIFactory1* dxgiFactory = nullptr;
@@ -336,7 +336,7 @@ HRESULT InitDevice()
     sd.Windowed = TRUE;
     // 실제 video memory에서 back - front buffer간의 swapchain mechanism에 대한 description -> hardware적인 지식을 요함 
 
-    hr = dxgiFactory->CreateSwapChain(g_pd3dDevice, &sd, &g_pSwapChain); // g_pSwapChain : swapchain을 만들고 나면 swapchain을 기술하는 pointer를 반환함 
+    hr = dxgiFactory->CreateSwapChain(g_pd3dDevice, &sd, &g_pSwapChain); // g_pSwapChain : swapchain을 만들고 나면 swapchain을 기술하는 pointer를 반환함-> g_pd3dDevice와 연결되어 있는 g_pSwapChain 
 
     // Note this tutorial doesn't handle full-screen swapchains so we block the ALT+ENTER shortcut 
     dxgiFactory->MakeWindowAssociation(g_hWnd, DXGI_MWA_NO_ALT_ENTER);
@@ -346,6 +346,8 @@ HRESULT InitDevice()
 
 
     // Create a render target view 
+    // swapchain -> frontbuffer(screenbuffer), backbuffer(실제 rendering process를 통해 rendering 결과가 그려질 buffer)존재 
+    // buffer 자체는 graphic pipieline에서 render target으로 잡히게 되고, render target으로 설정하기 위해 resource pointer (view)를 생성 
     // swapchain을 만들었기 때문에 backbuffer를 선언해주어야 함 -> rendering에 사용되는 buffer memory는 sample의 개념이 들어가는 texture memory로 잡힘  
     ID3D11Texture2D* pBackBuffer = nullptr; // DirectX에서는 resource type -> texture와 buffer type이 있음 -> texture : sample, buffer : 일반적인 memory index 개념  
     hr = g_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&pBackBuffer));
@@ -353,6 +355,7 @@ HRESULT InitDevice()
         return hr;
 
     // Backbuffer를 graphics pipeline에 연결시켜주는 것은 pointer를 직접적으로 사용하지 않고 view interface를 통해서 수행한다
+    // render target(texture)에 대한 reference pointer로 view를 사용하고 있는 것임 
     hr = g_pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, &g_pRenderTargetView);
     pBackBuffer->Release();
     if (FAILED(hr))
@@ -370,7 +373,7 @@ HRESULT InitDevice()
     vp.MaxDepth = 1.0f;
     vp.TopLeftX = 0;
     vp.TopLeftY = 0;
-    g_pImmediateContext->RSSetViewports(1, &vp);
+    g_pImmediateContext->RSSetViewports(1, &vp); // graphics pipeline에서 viewport setting이 필요할 때만 하면 됨, transformation과 관련된 어떤 setting도 하지 않았으므로 지금은 필요없음   
 
     return hr;
 } 
@@ -392,12 +395,15 @@ void Render()
 void CleanupDevice()
 {
     // PURPOSE : application이 끝나도 memory에 할당된 것이 해소되지 않음 -> 명시적으로 프로그램이 종료될 때 API에서 GPU에 할당한 것들을 해제해주어야 함 
-    if (g_pImmediateContext) g_pImmediateContext->ClearState();
+    // resource와 관련된 것들, get interface를 통해 resource의 pointer를 가져올 경우 자동으로 GPU memory에 잡히므로 reference counter system으로 프로그램 종료시 해당 resource를 GPU driver가 해제할지말지를 결정함 -> reference counter = 0 일 때 driver가 resource를 해제함
+    // 가져온 pointer를 쓰지 않을 경우 반드시 Release해주어야 reference counter가 줄어들게 되고, 0이 되게 되면 나중에 GPU driver가 육안 resource들을 해제하게 됨 
+    if (g_pImmediateContext) g_pImmediateContext->ClearState(); // program convention, 종료 시 일단 해당 state를 모두 null state로 만들어주는 과정이 필요함 <- 몇몇 resource들이 cleare 되지 않음으로써 해당 state에 대한 resource Release가 제대로 동작하지 않는 경우가 발생하기 때문 
 
-    if (g_pRenderTargetView) g_pRenderTargetView->Release();
+    // GPU pipeline의 state를 모두 clear 하고 Release를 수행해야 함 
+    if (g_pRenderTargetView) g_pRenderTargetView->Release();    // Release하고자 하는 pointer가 null인지 check <- 경우에 따라서 swap chain 생성 실패로 인해 null pointer를 release할 경우 error가 날 수 있기 때문에
     if (g_pSwapChain) g_pSwapChain->Release();
-    if (g_pImmediateContext) g_pImmediateContext->Release();
-    if (g_pd3dDevice) g_pd3dDevice->Release();
+    if (g_pImmediateContext) g_pImmediateContext->Release();    // safe Release, sage Delete 방식이라고 함 -> memory를 개발자가 직접 관리해야할 때 중요한 skill 
+    if (g_pd3dDevice) g_pd3dDevice->Release( ;
 }
 
 // Device를 만들고 DXGI interface를 Query를 불러와서 swapsystem을 만들고 
