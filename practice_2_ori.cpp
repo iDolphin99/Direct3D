@@ -10,6 +10,11 @@
 #include <d3d11_1.h>
 #include <directxcolors.h>
 
+#include <directxmath.h>
+#include "SimpleMath.h"
+
+using namespace DirectX::SimpleMath;
+
 #define MAX_LOADSTRING 100
 
 // Global Variables:
@@ -27,6 +32,12 @@ ID3D11DeviceContext* g_pImmediateContext = nullptr;
 IDXGISwapChain* g_pSwapChain = nullptr;
 ID3D11RenderTargetView* g_pRenderTargetView = nullptr;
 
+// This practice..
+ID3D11VertexShader* g_pVertexShader = nullptr;
+ID3D11PixelShader* g_pPixelShader = nullptr;
+ID3D11InputLayout* g_pVertexLayout = nullptr;
+ID3D11Buffer* g_pVertexBuffer = nullptr;
+
 // Forward declarations of functions included in this code module:
 HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -37,19 +48,19 @@ void CleanupDevice();
 void Render();
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
-                     _In_opt_ HINSTANCE hPrevInstance,
-                     _In_ LPWSTR    lpCmdLine,
-                     _In_ int       nCmdShow)
+	_In_opt_ HINSTANCE hPrevInstance,
+	_In_ LPWSTR    lpCmdLine,
+	_In_ int       nCmdShow)
 {
-    UNREFERENCED_PARAMETER(hPrevInstance);
-    UNREFERENCED_PARAMETER(lpCmdLine);
+	UNREFERENCED_PARAMETER(hPrevInstance);
+	UNREFERENCED_PARAMETER(lpCmdLine);
 
-    // TODO: Place code here.
+	// TODO: Place code here.
 
-    // Initialize global strings
-    LoadStringW(hInstance, IDS_APP_TITLE, g_szTitle, MAX_LOADSTRING);
-    LoadStringW(hInstance, IDC_PRACTICE1, g_szWindowClass, MAX_LOADSTRING);
-    
+	// Initialize global strings
+	LoadStringW(hInstance, IDS_APP_TITLE, g_szTitle, MAX_LOADSTRING);
+	LoadStringW(hInstance, IDC_PRACTICE1, g_szWindowClass, MAX_LOADSTRING);
+
 	if (FAILED(InitWindow(hInstance, nCmdShow)))
 		return 0;
 
@@ -59,17 +70,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 		return 0;
 	}
 
-    //HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_PRACTICE1));
+	//HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_PRACTICE1));
 	//MSG msg;
-    //// Main message loop:
-    //while (GetMessage(&msg, nullptr, 0, 0))
-    //{
-    //    if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
-    //    {
-    //        TranslateMessage(&msg);
-    //        DispatchMessage(&msg);
-    //    }
-    //}
+	//// Main message loop:
+	//while (GetMessage(&msg, nullptr, 0, 0))
+	//{
+	//    if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+	//    {
+	//        TranslateMessage(&msg);
+	//        DispatchMessage(&msg);
+	//    }
+	//}
 	MSG msg = { 0 };
 	while (WM_QUIT != msg.message)
 	{
@@ -85,12 +96,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	}
 
 	CleanupDevice();
-    return (int) msg.wParam;
+	return (int)msg.wParam;
 }
 
 int main()
 {
-    return wWinMain(GetModuleHandle(NULL), NULL, GetCommandLine(), SW_SHOWNORMAL);
+	return wWinMain(GetModuleHandle(NULL), NULL, GetCommandLine(), SW_SHOWNORMAL);
 }
 
 HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
@@ -117,7 +128,7 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
 
 	g_hInst = hInstance; // Store instance handle in our global variable
 
-    // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindoww
+	// https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-createwindoww
 	RECT rc = { 0, 0, 800, 600 };
 	AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
 	g_hWnd = CreateWindowW(g_szWindowClass, g_szTitle, WS_OVERLAPPEDWINDOW,
@@ -131,7 +142,7 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
 	ShowWindow(g_hWnd, nCmdShow);
 	UpdateWindow(g_hWnd);
 
-    return S_OK;
+	return S_OK;
 }
 
 //
@@ -146,69 +157,69 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
 //
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    switch (message)
-    {
-    case WM_COMMAND:
-        {
-            int wmId = LOWORD(wParam);
-            // Parse the menu selections:
-            switch (wmId)
-            {
-            case IDM_ABOUT:
-                DialogBox(g_hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-                break;
-            case IDM_EXIT:
-                DestroyWindow(hWnd);
-                break;
-            default:
-                return DefWindowProc(hWnd, message, wParam, lParam);
-            }
-        }
-        break;
-    case WM_MOUSEMOVE:
-        // WndProc mouse move
-        // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove
-        {
-		    int xPos = GET_X_LPARAM(lParam);
-		    int yPos = GET_Y_LPARAM(lParam);
-            printf("%d, %d\n", xPos, yPos);
-        }
-        break;
-    case WM_PAINT:
-        {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hWnd, &ps);
-            // TODO: Add any drawing code that uses hdc here...
-            EndPaint(hWnd, &ps);
-        }
-        break;
-    case WM_DESTROY:
-        PostQuitMessage(0);
-        break;
-    default:
-        return DefWindowProc(hWnd, message, wParam, lParam);
-    }
-    return 0;
+	switch (message)
+	{
+	case WM_COMMAND:
+	{
+		int wmId = LOWORD(wParam);
+		// Parse the menu selections:
+		switch (wmId)
+		{
+		case IDM_ABOUT:
+			DialogBox(g_hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+			break;
+		case IDM_EXIT:
+			DestroyWindow(hWnd);
+			break;
+		default:
+			return DefWindowProc(hWnd, message, wParam, lParam);
+		}
+	}
+	break;
+	case WM_MOUSEMOVE:
+		// WndProc mouse move
+		// https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove
+	{
+		int xPos = GET_X_LPARAM(lParam);
+		int yPos = GET_Y_LPARAM(lParam);
+		printf("%d, %d\n", xPos, yPos);
+	}
+	break;
+	case WM_PAINT:
+	{
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(hWnd, &ps);
+		// TODO: Add any drawing code that uses hdc here...
+		EndPaint(hWnd, &ps);
+	}
+	break;
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		break;
+	default:
+		return DefWindowProc(hWnd, message, wParam, lParam);
+	}
+	return 0;
 }
 
 // Message handler for about box.
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    UNREFERENCED_PARAMETER(lParam);
-    switch (message)
-    {
-    case WM_INITDIALOG:
-        return (INT_PTR)TRUE;
+	UNREFERENCED_PARAMETER(lParam);
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		return (INT_PTR)TRUE;
 
-    case WM_COMMAND:
-        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
-        {
-            EndDialog(hDlg, LOWORD(wParam));
-            return (INT_PTR)TRUE;
-        }
-        break;
-    }
-    return (INT_PTR)FALSE;
+	case WM_COMMAND:
+		if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+		{
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
 }
 #include <iostream>
 //--------------------------------------------------------------------------------------
@@ -218,6 +229,7 @@ HRESULT InitDevice()
 {
 	HRESULT hr = S_OK;
 
+#pragma region Previous class
 	RECT rc;
 	GetClientRect(g_hWnd, &rc);
 	UINT width = rc.right - rc.left;
@@ -295,6 +307,7 @@ HRESULT InitDevice()
 		return hr;
 
 	g_pImmediateContext->OMSetRenderTargets(1, &g_pRenderTargetView, nullptr);
+#pragma endregion
 
 	// Setup the viewport
 	D3D11_VIEWPORT vp;
@@ -306,7 +319,41 @@ HRESULT InitDevice()
 	vp.TopLeftY = 0;
 	g_pImmediateContext->RSSetViewports(1, &vp);
 
-    return hr;
+#pragma region Create a triangle
+	struct SimpleVertex
+	{
+		Vector3 Pos;
+	};
+
+	SimpleVertex vertices[] =
+	{
+		Vector3(0.0f, 0.5f, 0.5f),
+		Vector3(0.5f, -0.5f, 0.5f),
+		Vector3(-0.5f, -0.5f, 0.5f),
+	};
+
+	D3D11_BUFFER_DESC bd = {}; // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_buffer_desc
+	bd.Usage = D3D11_USAGE_IMMUTABLE; // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_usage 
+	bd.ByteWidth = sizeof(SimpleVertex) * 3;
+	bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	bd.CPUAccessFlags = 0;
+
+	D3D11_SUBRESOURCE_DATA InitData = {};
+	InitData.pSysMem = vertices;
+	hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pVertexBuffer);
+	if (FAILED(hr))
+		return hr;
+
+	// Set vertex buffer
+	UINT stride = sizeof(SimpleVertex);
+	UINT offset = 0;
+	g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pVertexBuffer, &stride, &offset);
+
+	// Set primitive topology
+	g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+#pragma endregion
+
+	return hr;
 }
 
 //--------------------------------------------------------------------------------------
@@ -316,6 +363,8 @@ void Render()
 {
 	// Just clear the backbuffer
 	g_pImmediateContext->ClearRenderTargetView(g_pRenderTargetView, DirectX::Colors::MidnightBlue);
+
+	// Present the information rendered to the back buffer to the front buffer (the screen)
 	g_pSwapChain->Present(0, 0);
 }
 
