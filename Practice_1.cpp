@@ -403,7 +403,7 @@ void CleanupDevice()
     if (g_pRenderTargetView) g_pRenderTargetView->Release();    // Release하고자 하는 pointer가 null인지 check <- 경우에 따라서 swap chain 생성 실패로 인해 null pointer를 release할 경우 error가 날 수 있기 때문에
     if (g_pSwapChain) g_pSwapChain->Release();
     if (g_pImmediateContext) g_pImmediateContext->Release();    // safe Release, sage Delete 방식이라고 함 -> memory를 개발자가 직접 관리해야할 때 중요한 skill 
-    if (g_pd3dDevice) g_pd3dDevice->Release( ;
+    if (g_pd3dDevice) g_pd3dDevice->Release();
 }
 
 // Device를 만들고 DXGI interface를 Query를 불러와서 swapsystem을 만들고 
