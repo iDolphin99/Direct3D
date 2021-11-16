@@ -50,13 +50,13 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="Shaders2_ori.hlsl">
+      <Filter>소스 파일</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="practice_4.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <FxCompile Include="Shaders.hlsl">
-      <Filter>소스 파일</Filter>
-    </FxCompile>
   </ItemGroup>
 </Project>

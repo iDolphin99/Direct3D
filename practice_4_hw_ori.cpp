@@ -2,7 +2,7 @@
 //
 
 #include "framework.h"
-#include "practice_1.h"
+#include "Practice.h"
 
 #include <windowsx.h>
 #include <stdio.h>
@@ -79,7 +79,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
 	// Initialize global strings
 	LoadStringW(hInstance, IDS_APP_TITLE, g_szTitle, MAX_LOADSTRING);
-	LoadStringW(hInstance, IDC_PRACTICE1, g_szWindowClass, MAX_LOADSTRING);
+	LoadStringW(hInstance, IDC_PRACTICE, g_szWindowClass, MAX_LOADSTRING);
 
 	if (FAILED(InitWindow(hInstance, nCmdShow)))
 		return 0;
@@ -136,10 +136,10 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
 	wcex.hInstance = hInstance;
-	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_PRACTICE1));
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_PRACTICE));
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_PRACTICE1);
+	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_PRACTICE);
 	wcex.lpszClassName = g_szWindowClass;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 

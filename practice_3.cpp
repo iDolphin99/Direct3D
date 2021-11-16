@@ -41,11 +41,14 @@ ID3D11Buffer* g_pVertexBuffer = nullptr;
 ID3D11Buffer* g_pIndexBuffer = nullptr;
 ID3D11Buffer* g_pConstantBuffer = nullptr;
 
-ID3D11Texture2D* g_pDepthStencil = nullptr;
-ID3D11DepthStencilView* g_pDepthStencilView = nullptr;
+ID3D11Texture2D* g_pDepthStencil = nullptr; // depth buffer 별도 생성, depthstencil texture -> texture resource 
+ID3D11DepthStencilView* g_pDepthStencilView = nullptr; // depthsencil texture를 reference 하는 view를 만들어 준다 -> texture resource를 depthstencilview로 쓰겠다는 reference  
 
-ID3D11RasterizerState* g_pRSState = nullptr;
-ID3D11DepthStencilState* g_pDSState = nullptr;
+ID3D11RasterizerState* g_pRSState = nullptr;	// backpace culling 내용이 담길 것임 
+ID3D11DepthStencilState* g_pDSState = nullptr;  // z-test 를 통한 oculusion culling을 실행하는 내용이 담길 것임
+// z-test를 setting하기 위해서 -> swap chain이 render target textrue와 연결되어 있음, dxgi 를 통해 windows handler를 얻어오고 있음 
+// windows handler를 얻어와서 거기서 textrue를 쓰고 있음
+// depth buffer는 화면에 그려주는 것과 직접적인 연관이 없고 순수하게 graphics 처리를 위해 사용되는 buffer이므로 별도로 생성해주어야 함 -> ID3D11Texture2D * 
 
 struct ConstantBuffer
 {
@@ -366,23 +369,26 @@ HRESULT InitDevice()
 	g_pImmediateContext->OMSetRenderTargets(1, &g_pRenderTargetView, nullptr);
 
 	// Create depth stencil texture
+	// render target texture를 만드는 것과 비슷함 
 	D3D11_TEXTURE2D_DESC descDepth = {};
 	descDepth.Width = width;
 	descDepth.Height = height;
 	descDepth.MipLevels = 1;
-	descDepth.ArraySize = 1;
-	descDepth.Format = DXGI_FORMAT_D32_FLOAT;
-	descDepth.SampleDesc.Count = 1;
+	descDepth.ArraySize = 1;						// depth와 stencil 중 stencil은 일종의 mask라고 보면 됨, 우리는 mask를 쓰지 않고 전 영역에 대해서 사용할 것임
+	descDepth.Format = DXGI_FORMAT_D32_FLOAT;		// fromat -> d32, mask를 사용하지 않기 때문에 depth만을 fully 32bit precision을 할당한다 
+	descDepth.SampleDesc.Count = 1;					// multisampling, antialiacing할 때 사용하는 parameter
 	descDepth.SampleDesc.Quality = 0;
-	descDepth.Usage = D3D11_USAGE_DEFAULT;
-	descDepth.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+	descDepth.Usage = D3D11_USAGE_DEFAULT;			// buffer에 값이 쓰여지기만 할 것이기 때문에 default 
+	descDepth.BindFlags = D3D11_BIND_DEPTH_STENCIL; // 해당 texture는 depthstencil로 binding 되어(용도로) 사용된다~ 를 의미하는 flag, 내부적으로 depthstencil용으로 특수하게 동작한다 
 	descDepth.CPUAccessFlags = 0;
 	descDepth.MiscFlags = 0;
-	hr = g_pd3dDevice->CreateTexture2D(&descDepth, nullptr, &g_pDepthStencil);
+	hr = g_pd3dDevice->CreateTexture2D(&descDepth, nullptr, &g_pDepthStencil); 
 	if (FAILED(hr))
 		return hr;
 
-	// Create the depth stencil view
+	// Create the depth stencil view 
+	// 위 depthstencil은 resource로만 잡히기 때문에 resource를 g_p setting하기 위해 가르키는 view가 필요하다 
+	// 이와 같은 setting function은 rendering function 부분에 작성하는 것이 좋다 
 	D3D11_DEPTH_STENCIL_VIEW_DESC descDSV = {};
 	descDSV.Format = descDepth.Format;
 	descDSV.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
@@ -391,6 +397,7 @@ HRESULT InitDevice()
 	if (FAILED(hr))
 		return hr;
 
+	// depthsencil -> outmerge에 둔다 
 	g_pImmediateContext->OMSetRenderTargets(1, &g_pRenderTargetView, g_pDepthStencilView);
 #pragma endregion
 
@@ -407,7 +414,7 @@ HRESULT InitDevice()
 #pragma region Create Shader
 	// Compile the vertex shader
 	ID3DBlob* pVSBlob = nullptr;
-	hr = CompileShaderFromFile(L"Shaders.hlsl", "VS_TEST", "vs_4_0", &pVSBlob);
+	hr = CompileShaderFromFile(L"Shaders2_ori.hlsl", "VS_TEST", "vs_4_0", &pVSBlob);
 	if (FAILED(hr))
 	{
 		MessageBox(nullptr, L"Vertex Shader Compiler Error!!", L"Error!!", MB_OK);
@@ -442,7 +449,7 @@ HRESULT InitDevice()
 
 	// Compile the pixel shader
 	ID3DBlob* pPSBlob = nullptr;
-	hr = CompileShaderFromFile(L"Shaders.hlsl", "PS", "ps_4_0", &pPSBlob);
+	hr = CompileShaderFromFile(L"Shaders2_ori.hlsl", "PS", "ps_4_0", &pPSBlob);
 	if (FAILED(hr))
 	{
 		MessageBox(nullptr, L"Pixel Shader Compiler Error!!", L"Error", MB_OK);
@@ -513,6 +520,8 @@ HRESULT InitDevice()
 
 		2,7,6,
 		3,7,2,
+		// 7 2 6 
+		// 7 3 2 -> 얘네만 CCW로 되어있고 나머지는 CW로 되어있던 것임~! 
 
 		6,4,5,
 		7,4,6,
@@ -556,27 +565,30 @@ HRESULT InitDevice()
 #pragma endregion
 
 #pragma region States
+	// resterizer state를 그리는 부분 
 	D3D11_RASTERIZER_DESC descRaster;
 	ZeroMemory(&descRaster, sizeof(D3D11_RASTERIZER_DESC));
-	descRaster.FillMode = D3D11_FILL_SOLID;
-	descRaster.CullMode = D3D11_CULL_BACK;
-	descRaster.FrontCounterClockwise = true;
+	descRaster.FillMode = D3D11_FILL_SOLID;								// 채워서 그리는 것, FILL_WIREFRAME 실험해보길 바람!! 
+	descRaster.CullMode = D3D11_CULL_BACK;								// BACKPACE로 culling 한다 -> BACKPACE culling을 안하고 싶다면 이곳을 CULL_NONE!! 
+	descRaster.FrontCounterClockwise = true;							// front face는 ccw방향으로 한다 -> create a cube region에서 방향 그대로 만들어짐, 삼각형이 바깥 방향으로 향하는 것이 ccw방향인지 확인해보시길 바람!! 
 	descRaster.DepthBias = 0;
 	descRaster.DepthBiasClamp = 0;
 	descRaster.SlopeScaledDepthBias = 0;
-	descRaster.DepthClipEnable = true;
-	descRaster.ScissorEnable = false;
-	descRaster.MultisampleEnable = false;
+	descRaster.DepthClipEnable = true;									// depth cliping을 하겠다 -> rasterizer에서 depth가 0~1로 (view frustum이 projection space에서) 계산되는데 이때 0~1 바깥은 clip out시킨다 
+	descRaster.ScissorEnable = false;									// user가 정한 rectangle 영역 외의 것은 자르겠다 -> 별도의 rectangle을 지정하지 않았기 때문에 상관없음 
+	descRaster.MultisampleEnable = false;								// antialised과 관련된 issue를 다룰 때 쓰도록 하자
 	descRaster.AntialiasedLineEnable = false;
-	hr = g_pd3dDevice->CreateRasterizerState(&descRaster, &g_pRSState);
+	hr = g_pd3dDevice->CreateRasterizerState(&descRaster, &g_pRSState); // state -> resterizer 
 
+	// depthstencil state를 그리는 부분 
 	D3D11_DEPTH_STENCIL_DESC descDepthStencil;
 	ZeroMemory(&descDepthStencil, sizeof(D3D11_DEPTH_STENCIL_DESC));
-	descDepthStencil.DepthEnable = true;
-	descDepthStencil.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-	descDepthStencil.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-	descDepthStencil.StencilEnable = false;
-	hr = g_pd3dDevice->CreateDepthStencilState(&descDepthStencil, &g_pDSState);
+	descDepthStencil.DepthEnable = true;								// z-test를 안하고 싶다면 이곳을 false!! 
+	descDepthStencil.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;		// 모든 영역(전체 픽셀)에 대해서 depth test를 하겠다 -> 부분적으로 z-depth test를 할 수 있다는 이야기(depthstencil mask) -> stencil(=mask)를 안쓰기 때문에 depth에 32bit를 모두 준 것! 
+	descDepthStencil.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;			// depth가 현재 있는 pixel 값보다 더 작은 depth값이 오면 그 것을 쓰겠다 
+	descDepthStencil.StencilEnable = false;								// stencil 안쓰니까 false 
+	hr = g_pd3dDevice->CreateDepthStencilState(&descDepthStencil, &g_pDSState); // state -> depthstencil
+	// depthstencil buffer를 만든 후 이를 가르키는 view를 만들어 outmerge stage에 set해주어야 한다! 
 #pragma endregion
 
 
@@ -599,6 +611,9 @@ void Render()
 	g_pImmediateContext->UpdateSubresource(g_pConstantBuffer, 0, nullptr, &cb, 0, 0); // 이것을 사용하게 되면 USAGE_DEFAULT -> DYNAMIC으로 바꿔준다 
 	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer); // gpu에 update 된 constant buffer를 vertex shader stage에 set해준다, 여기서의 0은 register(b0)과 동일 
 
+	// culling과 관련된 setting 
+	// depth buffer에 계속해서 값이 쓰이고 있는 것임 
+	// 그래서 해당 depth buffer도 rgba를 clear하는 것 처럼 1의 값으로(maximum 값-ps 기준), maximum 값으로 setting해주는 것  
 	g_pImmediateContext->RSSetState(g_pRSState);
 	g_pImmediateContext->OMSetDepthStencilState(g_pDSState, 0);
 
@@ -611,7 +626,9 @@ void Render()
 	// Render a triangle
 	g_pImmediateContext->VSSetShader(g_pVertexShader, nullptr, 0);
 	g_pImmediateContext->PSSetShader(g_pPixelShader, nullptr, 0);
-	g_pImmediateContext->DrawIndexed(36, 0, 0); // index가 총 36개다 -> 한면에 index = 6 , 총 6면이여서  
+	g_pImmediateContext->DrawIndexed(36, 0, 0); // index가 총 36개다 -> 한면에 index = 6 , 총 6면이여서 -> 순서대로 그려지고 있을 때 덧그려짐으로써 culling이 되지 않고 있음
+	// culling을 해결하기 위해 backspace만 culling하거나 
+	// z-test culling, 앞에 있는 것만 그려지도록 하거나 
 
 	// Present the information rendered to the back buffer to the front buffer (the screen)
 	g_pSwapChain->Present(0, 0);

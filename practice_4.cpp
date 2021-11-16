@@ -501,7 +501,7 @@ HRESULT InitDevice()
 #pragma region Create Shader
 	// Compile the vertex shader
 	ID3DBlob* pVSBlob = nullptr;
-	hr = CompileShaderFromFile(L"Shaders.hlsl", "VS_TEST", "vs_4_0", &pVSBlob);
+	hr = CompileShaderFromFile(L"Shaders2_ori.hlsl", "VS_TEST", "vs_4_0", &pVSBlob);
 	if (FAILED(hr))
 	{
 		MessageBox(nullptr, L"Vertex Shader Compiler Error!!", L"Error!!", MB_OK);
@@ -535,7 +535,7 @@ HRESULT InitDevice()
 
 	// Compile the pixel shader
 	ID3DBlob* pPSBlob = nullptr;
-	hr = CompileShaderFromFile(L"Shaders.hlsl", "PS", "ps_4_0", &pPSBlob);
+	hr = CompileShaderFromFile(L"Shaders2_ori.hlsl", "PS", "ps_4_0", &pPSBlob);
 	if (FAILED(hr))
 	{
 		MessageBox(nullptr, L"Pixel Shader Compiler Error!!", L"Error", MB_OK);
@@ -675,9 +675,10 @@ HRESULT InitDevice()
 // Render the frame
 //--------------------------------------------------------------------------------------
 void Render()
-{
-	// Matrix matR = Matrix::CreateRotationY(DirectX::XM_PI / 10000.f);
-	// g_mWorld = matR * g_mWorld;
+{	
+	// camera는 가만히 있고 object가 매 프레임마다 y축을 중심으로 회전한다 
+	// Matrix matR = Matrix::CreateRotationY(DirectX::XM_PI / 10000.f);	// y축을 중심으로 rotation 
+	// g_mWorld = matR * g_mWorld;										// row-major
 
 	ConstantBuffer cb;
 	cb.mWorld = g_mWorld.Transpose(); // object를 회전하기 위해서  
