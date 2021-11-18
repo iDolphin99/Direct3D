@@ -18,6 +18,7 @@ using namespace DirectX::SimpleMath;
 
 #define MAX_LOADSTRING 100
 
+#pragma region Global
 // Global Variables:
 HINSTANCE g_hInst;                                // current instance
 WCHAR g_szTitle[MAX_LOADSTRING];                  // The title bar text
@@ -66,6 +67,9 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 HRESULT InitDevice();
 void CleanupDevice();
 void Render();
+
+
+#pragma endregion
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	_In_opt_ HINSTANCE hPrevInstance,
@@ -165,20 +169,16 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
 	return S_OK;
 }
 
-// x, y -> SS의 point, mouse cursor 
-// mView -> WMatrix로 mapping할 때 WM -> ViewMatrix -> ProjectionMatrix를 거쳐서 SS에 mapping됨, 구조상 viewMatrix가 global matrix임, 그러므로 update된 값이 그대로 사용되면 안됨, mouse가 press했을 때 초기 viewMatrix를 저장하겠다는 의미 
-// mouse가 press되었을 때 상태의 viewMat와 x, y cursor point를 가지고 그때 CS로 변환 후 WS의 nearplane의 지점으로 변환해줌 
-// SS점 x,y를 WS의 np 점인 3차원 vector(Vector3)로 mapping해주는 function 
 Vector3 ComputePosSS2WS(int x, int y, const Matrix& mView)
 {
-	// EXPLAIN!! per Line
+	// EXPLAIN!!
 	RECT rc;
 	GetWindowRect(g_hWnd, &rc);
 	float w = (float)(rc.right - rc.left);
 	float h = (float)(rc.bottom - rc.top);
-	Vector3 pos_ps = Vector3((float)x / w * 2 - 1, -(float)y / h * 2 + 1, 0);	// why? explain! 
+	Vector3 pos_ps = Vector3((float)x / w * 2 - 1, -(float)y / h * 2 + 1, 0); 
 	Matrix matPS2CS;
-	g_mProjection.Invert(matPS2CS);												// viewportMat, projectionMat는 내부적으로 규정되어있어 변하지 않기 때문에 global variable이여도 됨, 여기서는 projectionMat만 사용함 
+	g_mProjection.Invert(matPS2CS);
 	Matrix matCS2WS;
 	mView.Invert(matCS2WS);
 	Matrix matPS2WS = matPS2CS * matCS2WS; // row major
@@ -198,13 +198,10 @@ Vector3 ComputePosSS2WS(int x, int y, const Matrix& mView)
 //
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	// press가 됐을 때 그때의 viewing state를 저장해야 함 -> viewing state의 대상이 되는 것은 eye position, at, up이 됨 
-	// 함수 내부에서 이전 state를 저장해놓을 수 있음 -> static 
-	// logic 상으로는 function 내에서만 사용할 수 있지만 function이 종료된다고 해서 사라지지 않고 static memory 주소에 남게 됨  
-	// 그래서 function이 다시 호출되면 기존에 저장되어 있던 값을 읽을 수 있음 
 	static Vector3 pos_start_np_ws;
 	static Vector3 pos_start_eye_ws, pos_start_at_ws, vec_start_up;
 	static Matrix mView_start;
+	static Matrix mWorld_start = g_mWorld;
 	switch (message)
 	{
 	case WM_COMMAND:
@@ -227,10 +224,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_LBUTTONDOWN:
 	case WM_RBUTTONDOWN:
 	{
-		// 현재 press된 mouse cursor 를 저장한다, press 된 당시의 state를 저장 (eye poisition, at, up, 해당 position에 대한 WS np상의 vector3)
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
-
+		
 		pos_start_np_ws = ComputePosSS2WS(xPos, yPos, g_mView);
 		pos_start_eye_ws = g_pos_eye;
 		pos_start_at_ws = g_pos_at;
@@ -242,17 +238,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		// WndProc mouse move
 		// https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove
 	{
-		// mouse가 move된 위치를 가지고 상대적인 위치를 계산한다 
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
 
 		// https://docs.microsoft.com/en-us/windows/win32/learnwin32/mouse-clicks
-		// press 이후 추가적인 mouse move event 를 처리하면 drag event가 됨 
-		// boolean flag를 static variable로 구현할 수 있지만 mouseUp에 대해서도 구현해주어야 함 
+
 		if (wParam & MK_LBUTTON)
 		{
-			// To Do - Rotation logic 
-			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);					// 처음 press된 지점 ~ drage된 지점 vector(?)
+			// To Do
+			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
 #pragma region HW part 1
 			//printf("%f, %f, %f\n", pos_start_np_ws.x, pos_start_np_ws.y, pos_start_np_ws.z);
 			Vector3 vec_start_cam2np = pos_start_np_ws - pos_start_eye_ws;
@@ -272,12 +266,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				g_vec_up = Vector3::TransformNormal(vec_start_up, matR);
 			}
 #pragma endregion HW part 1
-			// 세 개의 variable을 update해주는 mission 
 			g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 		}
 		else if (wParam & MK_RBUTTON)
 		{
-			// To Do - Panning logic
+			// To Do
 			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
 #pragma region HW part 2
 			float dist_at = (pos_start_at_ws - pos_start_eye_ws).Length();
@@ -292,24 +285,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				g_pos_at = pos_start_at_ws + vec_diff;
 			}
 #pragma endregion HW part 2
-			// 세 개의 variable을 update해주는 mission 
-			// 이 variable로부터 veiwMat을 최종적으로 update해준 후 매 프레임마다 Render fucntion에서 ConstantBuffer로 들어가고 최종적으로 변경된 Camposition이 화면에 출력됨 
+
+			// g_mWorld;
 			g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 		}
 	}
 	break;
 	case WM_MOUSEWHEEL:
 	{
-		// zDelta값을 얻을 수 있음, zdelta 값의 음, 양수에 따라서 cam의 전진, 후진을 정할 수 있음 
 		int zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
 #pragma region HW part 3
 		float move_delta = zDelta > 0 ? 0.5f : -0.5f;
 		Vector3 view_dir = (g_pos_at - g_pos_eye);
 		view_dir.Normalize();
 		g_pos_eye += move_delta * view_dir;
-		g_pos_at += move_delta * view_dir;
+		g_pos_at += move_delta * view_dir;	
+
+		Vector3 move = move_delta * view_dir;
+		g_mWorld = mWorld_start.CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 #pragma endregion HW part 3
-		g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
+		printf("%f %f %f \n", move.x, move.y, move.z);
+		//g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 	}
 	break;
 	case WM_PAINT:
@@ -648,10 +644,8 @@ HRESULT InitDevice()
 		return hr;
 
 #pragma region Transform Setting
-	// initDevice()에서 local parameter로 지정되어 있는 것을 global parameter로 만들어 줌 
-	// 그리고 mouse event를 통해 eye, at, up parameter를 update하고 
-	// 이로부터 viewMat을 만든 후 update해준다 
 	g_mWorld = Matrix::CreateScale(10.f);
+	//g_mWorld = Matrix::CreateTranslation(-3.0f, 1.0f, 1.0f);
 
 	g_pos_eye = Vector3(0.0f, 0.0f, 20.0f);
 	g_pos_at = Vector3(0.0f, 0.0f, 0.0f);
@@ -685,7 +679,6 @@ HRESULT InitDevice()
 	hr = g_pd3dDevice->CreateDepthStencilState(&descDepthStencil, &g_pDSState);
 #pragma endregion
 
-
 	return hr;
 }
 
@@ -693,14 +686,13 @@ HRESULT InitDevice()
 // Render the frame
 //--------------------------------------------------------------------------------------
 void Render()
-{	
-	// camera는 가만히 있고 object가 매 프레임마다 y축을 중심으로 회전한다 
-	// Matrix matR = Matrix::CreateRotationY(DirectX::XM_PI / 10000.f);	// y축을 중심으로 rotation 
-	// g_mWorld = matR * g_mWorld;										// row-major
+{
+	//Matrix matR = Matrix::CreateRotationY(DirectX::XM_PI / 10000.f);
+	//g_mWorld = matR * g_mWorld;
 
 	ConstantBuffer cb;
-	cb.mWorld = g_mWorld.Transpose(); // object를 회전하기 위해서  
-	cb.mView = g_mView.Transpose();   // camera를 회전하기 위해서 
+	cb.mWorld = g_mWorld.Transpose();
+	cb.mView = g_mView.Transpose();
 	cb.mProjection = g_mProjection.Transpose();
 	g_pImmediateContext->UpdateSubresource(g_pConstantBuffer, 0, nullptr, &cb, 0, 0);
 	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);

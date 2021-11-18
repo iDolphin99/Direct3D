@@ -173,7 +173,7 @@
     <FxCompile Include="Shaders2_ori.hlsl" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="practice_4.cpp" />
+    <ClCompile Include="practice_4_hw_박형빈.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

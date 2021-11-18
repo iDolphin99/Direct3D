@@ -55,7 +55,7 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="practice_4.cpp">
+    <ClCompile Include="practice_4_hw_박형빈.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
