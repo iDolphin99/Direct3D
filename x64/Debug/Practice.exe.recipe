@@ -2,12 +2,12 @@
 <Project>
   <ProjectOutputs>
     <ProjectOutput>
-      <FullPath>C:\Users\mtang\Desktop\SW\21. DirectX\Practice\x64\Debug\Practice.exe</FullPath>
+      <FullPath>D:\바탕 화면\SW\21. DirectX\Practice\x64\Debug\Practice.exe</FullPath>
     </ProjectOutput>
   </ProjectOutputs>
   <ContentFiles>
     <ContentFile>
-      <FullPath>C:\Users\mtang\Desktop\SW\21. DirectX\Practice\x64\Debug\Shaders2_ori.cso</FullPath>
+      <FullPath>D:\바탕 화면\SW\21. DirectX\Practice\x64\Debug\Shaders2_ori.cso</FullPath>
     </ContentFile>
   </ContentFiles>
   <SatelliteDlls />

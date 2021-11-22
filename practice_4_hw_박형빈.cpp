@@ -253,28 +253,30 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			vec_start_cam2np.Normalize();
 			Vector3 vec_cur_cam2np = pos_cur_np_ws - pos_start_eye_ws;
 			vec_cur_cam2np.Normalize();
-			float angle_rad = acosf(vec_start_cam2np.Dot(vec_cur_cam2np)) * 3.0f;
+			float angle_rad = acosf(vec_start_cam2np.Dot(vec_cur_cam2np)) * 0.4f;
 			
 			Vector3 rot_axis = vec_start_cam2np.Cross(vec_cur_cam2np);
 			if (rot_axis.LengthSquared() > 0.000001)
 			{
 				printf("%f\n", angle_rad);
 				rot_axis.Normalize();
+				
 				Matrix matR = Matrix::CreateFromAxisAngle(rot_axis, angle_rad);
-
-				g_pos_eye = Vector3::Transform(pos_start_eye_ws, matR);
+				
+				//g_pos_eye = Vector3::Transform(pos_start_eye_ws, matR);
 				//g_pos_at = no change
-				g_vec_up = Vector3::TransformNormal(vec_start_up, matR);
+				//g_vec_up = Vector3::TransformNormal(vec_start_up, matR);
 			}
-
-			g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
+			Matrix matR = Matrix::CreateFromAxisAngle(rot_axis, angle_rad);
+			g_mWorld = g_mWorld * matR;
 #pragma endregion HW part 1
 		}
 		else if (wParam & MK_RBUTTON)
 		{
+#pragma region HW part 2 Panning
 			// To Do
 			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
-#pragma region HW part 2
+			
 			float dist_at = (pos_start_at_ws - pos_start_eye_ws).Length();
 			// np : 0.01f
 			Vector3 vec_diff_np = pos_cur_np_ws - pos_start_np_ws;
@@ -282,34 +284,28 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			float dist_diff = dist_diff_np / 0.01f * dist_at;
 			if (dist_diff_np > 0.000001)
 			{
-				Vector3 vec_diff = vec_diff_np / dist_diff_np * dist_diff;
-				g_pos_eye = pos_start_eye_ws + vec_diff;
-				g_pos_at = pos_start_at_ws + vec_diff;
+				Vector3 vec_diff = vec_diff_np / dist_diff_np * dist_diff * (0.05f);
+				Matrix matP = g_mWorld.CreateTranslation(vec_diff);
+				g_mWorld = g_mWorld.CreateTranslation;
+				printf("%f %f %f \n", vec_diff.x, vec_diff.y, vec_diff.z);
+				
+				//g_pos_eye = pos_start_eye_ws + vec_diff;
+				//g_pos_at = pos_start_at_ws + vec_diff;
 			}
-#pragma endregion HW part 2
 
-			// g_mWorld;
-			g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
+			//g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
+#pragma endregion HW part 2
 		}
 	}
 	break;
 	case WM_MOUSEWHEEL:
 	{
 		int zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
-#pragma region HW part 3
-		float move_delta = zDelta > 0 ? 0.5f : -0.5f;
-		Vector3 view_dir = (g_pos_at - g_pos_eye);
-		view_dir.Normalize();
-		//g_pos_eye += move_delta * view_dir;
-		//g_pos_at += move_delta * view_dir;	
-
-		Vector3 move = move_delta * view_dir;
-		Matrix wheel_mat = mWorld_start;
-		wheel_mat= Matrix::CreateTranslation(move);
-		g_mWorld = wheel_mat * mWorld_start;	
+#pragma region HW part 3 Wheel
+		float move_delta = zDelta > 0 ? 1.05f : 0.95f;
+		Matrix matZ = Matrix::CreateScale(move_delta);
+		g_mWorld = g_mWorld * matZ;	
 #pragma endregion HW part 3
-		printf("%f %f %f\n", wheel_mat._14, wheel_mat._24, wheel_mat._34 );
-		//g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 	}
 	break;
 	case WM_PAINT:
