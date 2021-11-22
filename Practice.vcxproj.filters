@@ -53,9 +53,21 @@
     <FxCompile Include="Shaders2_ori.hlsl">
       <Filter>소스 파일</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders5.hlsl">
+      <Filter>소스 파일</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="practice_4_hw_박형빈.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="practice_4.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="practice_5.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="practice_5_ori.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>

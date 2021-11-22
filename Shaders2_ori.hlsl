@@ -53,3 +53,4 @@ float4 PS(PS_INPUT input) : SV_Target
 // return float4(input.PosTemp.xy + (float2)-.5, 1.0f, 1.0f); 
 // 2d vector + 2d vector 가 된다 
 // 그리고 기본적으로 3d 이여도 3d-razister에 homogeneous 값(1)을 쓰는 4d 으로 들어가기 때문임, 그래서 rasterizer의 output을 input으로 받는 PS의 input은 4d 이여야 겠죠???
+

@@ -188,9 +188,19 @@
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders2_ori.hlsl" />
+    <FxCompile Include="Shaders5.hlsl" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="practice_4_hw_박형빈.cpp" />
+    <ClCompile Include="practice_4.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="practice_4_hw_박형빈.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="practice_5.cpp" />
+    <ClCompile Include="practice_5_ori.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

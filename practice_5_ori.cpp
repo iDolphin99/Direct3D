@@ -2,7 +2,7 @@
 //
 
 #include "framework.h"
-#include "Practice.h"
+#include "practice_1.h"
 
 #include <windowsx.h>
 #include <stdio.h>
@@ -18,7 +18,6 @@ using namespace DirectX::SimpleMath;
 
 #define MAX_LOADSTRING 100
 
-#pragma region Global
 // Global Variables:
 HINSTANCE g_hInst;                                // current instance
 WCHAR g_szTitle[MAX_LOADSTRING];                  // The title bar text
@@ -40,7 +39,8 @@ ID3D11PixelShader* g_pPixelShader = nullptr;
 ID3D11InputLayout* g_pVertexLayout = nullptr;
 ID3D11Buffer* g_pVertexBuffer = nullptr;
 ID3D11Buffer* g_pIndexBuffer = nullptr;
-ID3D11Buffer* g_pConstantBuffer = nullptr;
+ID3D11Buffer* g_pTransformCBuffer = nullptr;
+ID3D11Buffer* g_pLightCBuffer = nullptr;
 
 ID3D11Texture2D* g_pDepthStencil = nullptr;
 ID3D11DepthStencilView* g_pDepthStencilView = nullptr;
@@ -48,12 +48,19 @@ ID3D11DepthStencilView* g_pDepthStencilView = nullptr;
 ID3D11RasterizerState* g_pRSState = nullptr;
 ID3D11DepthStencilState* g_pDSState = nullptr;
 
-struct ConstantBuffer
+struct TransformCBuffer
 {
 	Matrix mWorld;
 	Matrix mView;
 	Matrix mProjection;
 };
+
+struct LightCBuffer
+{
+	Vector3 posLightCS;
+	int lightFlag;
+};
+
 Matrix g_mWorld, g_mView, g_mProjection;
 
 // This practice..
@@ -67,9 +74,7 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 HRESULT InitDevice();
 void CleanupDevice();
 void Render();
-
-
-#pragma endregion
+HRESULT Recompile();
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	_In_opt_ HINSTANCE hPrevInstance,
@@ -83,7 +88,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
 	// Initialize global strings
 	LoadStringW(hInstance, IDS_APP_TITLE, g_szTitle, MAX_LOADSTRING);
-	LoadStringW(hInstance, IDC_PRACTICE, g_szWindowClass, MAX_LOADSTRING);
+	LoadStringW(hInstance, IDC_PRACTICE1, g_szWindowClass, MAX_LOADSTRING);
 
 	if (FAILED(InitWindow(hInstance, nCmdShow)))
 		return 0;
@@ -140,10 +145,10 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
 	wcex.hInstance = hInstance;
-	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_PRACTICE));
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_PRACTICE1));
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_PRACTICE);
+	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_PRACTICE1);
 	wcex.lpszClassName = g_szWindowClass;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 
@@ -176,7 +181,7 @@ Vector3 ComputePosSS2WS(int x, int y, const Matrix& mView)
 	GetWindowRect(g_hWnd, &rc);
 	float w = (float)(rc.right - rc.left);
 	float h = (float)(rc.bottom - rc.top);
-	Vector3 pos_ps = Vector3((float)x / w * 2 - 1, -(float)y / h * 2 + 1, 0); 
+	Vector3 pos_ps = Vector3((float)x / w * 2 - 1, -(float)y / h * 2 + 1, 0);
 	Matrix matPS2CS;
 	g_mProjection.Invert(matPS2CS);
 	Matrix matCS2WS;
@@ -201,7 +206,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	static Vector3 pos_start_np_ws;
 	static Vector3 pos_start_eye_ws, pos_start_at_ws, vec_start_up;
 	static Matrix mView_start;
-	static Matrix mWorld_start = g_mWorld;
 	switch (message)
 	{
 	case WM_COMMAND:
@@ -221,12 +225,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 	}
 	break;
+	case WM_KEYDOWN:
+	{
+		if (wParam == VK_BACK) if (FAILED(Recompile())) printf("FAILED!!!!\n"); 
+		break;
+	}
 	case WM_LBUTTONDOWN:
 	case WM_RBUTTONDOWN:
 	{
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
-		
+
 		pos_start_np_ws = ComputePosSS2WS(xPos, yPos, g_mView);
 		pos_start_eye_ws = g_pos_eye;
 		pos_start_at_ws = g_pos_at;
@@ -237,46 +246,42 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_MOUSEMOVE:
 		// WndProc mouse move
 		// https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove
-		// https://docs.microsoft.com/en-us/windows/win32/learnwin32/mouse-clicks
 	{
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
 
+		// https://docs.microsoft.com/en-us/windows/win32/learnwin32/mouse-clicks
+
 		if (wParam & MK_LBUTTON)
 		{
-#pragma region HW part 1 Rotation
 			// To Do
 			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
+#pragma region HW part 1
 			//printf("%f, %f, %f\n", pos_start_np_ws.x, pos_start_np_ws.y, pos_start_np_ws.z);
-			
 			Vector3 vec_start_cam2np = pos_start_np_ws - pos_start_eye_ws;
 			vec_start_cam2np.Normalize();
 			Vector3 vec_cur_cam2np = pos_cur_np_ws - pos_start_eye_ws;
 			vec_cur_cam2np.Normalize();
-			float angle_rad = acosf(vec_start_cam2np.Dot(vec_cur_cam2np)) * 0.4f;
-			
+			float angle_rad = acosf(vec_start_cam2np.Dot(vec_cur_cam2np)) * 3.0f;
 			Vector3 rot_axis = vec_start_cam2np.Cross(vec_cur_cam2np);
 			if (rot_axis.LengthSquared() > 0.000001)
 			{
 				printf("%f\n", angle_rad);
 				rot_axis.Normalize();
-				
 				Matrix matR = Matrix::CreateFromAxisAngle(rot_axis, angle_rad);
-				
-				//g_pos_eye = Vector3::Transform(pos_start_eye_ws, matR);
+
+				g_pos_eye = Vector3::Transform(pos_start_eye_ws, matR);
 				//g_pos_at = no change
-				//g_vec_up = Vector3::TransformNormal(vec_start_up, matR);
+				g_vec_up = Vector3::TransformNormal(vec_start_up, matR);
 			}
-			Matrix matR = Matrix::CreateFromAxisAngle(rot_axis, angle_rad);
-			g_mWorld = matR * g_mWorld; // 교수님 설명할 때 이렇게 했더라 
-#pragma endregion HW part 1 
+#pragma endregion HW part 1
+			g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 		}
 		else if (wParam & MK_RBUTTON)
 		{
-#pragma region HW part 2 Panning
 			// To Do
 			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
-			
+#pragma region HW part 2
 			float dist_at = (pos_start_at_ws - pos_start_eye_ws).Length();
 			// np : 0.01f
 			Vector3 vec_diff_np = pos_cur_np_ws - pos_start_np_ws;
@@ -284,28 +289,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			float dist_diff = dist_diff_np / 0.01f * dist_at;
 			if (dist_diff_np > 0.000001)
 			{
-				Vector3 vec_diff = vec_diff_np / dist_diff_np * dist_diff * (0.05f);
-				Matrix matP = g_mWorld.CreateTranslation(vec_diff);
-				g_mWorld = g_mWorld * matP;
-				printf("%f %f %f \n", vec_diff.x, vec_diff.y, vec_diff.z);
-				
-				//g_pos_eye = pos_start_eye_ws + vec_diff;
-				//g_pos_at = pos_start_at_ws + vec_diff;
+				Vector3 vec_diff = vec_diff_np / dist_diff_np * dist_diff;
+				g_pos_eye = pos_start_eye_ws - vec_diff;
+				g_pos_at = pos_start_at_ws - vec_diff;
 			}
-
-			//g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 #pragma endregion HW part 2
+			g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 		}
 	}
 	break;
 	case WM_MOUSEWHEEL:
 	{
 		int zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
-#pragma region HW part 3 Wheel
-		float move_delta = zDelta > 0 ? 1.05f : 0.95f;
-		Matrix matZ = Matrix::CreateScale(move_delta);
-		g_mWorld = g_mWorld * matZ;	
+#pragma region HW part 3
+		float move_delta = zDelta > 0 ? 0.5f : -0.5f;
+		Vector3 view_dir = (g_pos_at - g_pos_eye);
+		view_dir.Normalize();
+		g_pos_eye += move_delta * view_dir;
+		g_pos_at += move_delta * view_dir;
 #pragma endregion HW part 3
+		g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 	}
 	break;
 	case WM_PAINT:
@@ -381,6 +384,44 @@ HRESULT CompileShaderFromFile(const WCHAR* szFileName, LPCSTR szEntryPoint, LPCS
 	if (pErrorBlob) pErrorBlob->Release();
 
 	return S_OK;
+}
+
+HRESULT Recompile()
+{
+	HRESULT hr = S_OK;
+	// Compile the vertex shader
+	ID3DBlob* pVSBlob = nullptr;
+	hr = CompileShaderFromFile(L"Shaders.hlsl", "VS_TEST", "vs_4_0", &pVSBlob);
+	if (FAILED(hr))
+	{
+		MessageBox(nullptr, L"Vertex Shader Compiler Error!!", L"Error!!", MB_OK);
+		return hr;
+	}
+
+	// Create the vertex shader
+	if (g_pVertexShader) g_pVertexShader->Release();
+	hr = g_pd3dDevice->CreateVertexShader(pVSBlob->GetBufferPointer(), pVSBlob->GetBufferSize(), nullptr, &g_pVertexShader);
+	pVSBlob->Release();
+	if (FAILED(hr))
+		return hr;
+
+	// Compile the pixel shader
+	ID3DBlob* pPSBlob = nullptr;
+	hr = CompileShaderFromFile(L"Shaders.hlsl", "PS", "ps_4_0", &pPSBlob);
+	if (FAILED(hr))
+	{
+		MessageBox(nullptr, L"Pixel Shader Compiler Error!!", L"Error", MB_OK);
+		return hr;
+	}
+
+	// Create the pixel shader
+	if (g_pPixelShader) g_pPixelShader->Release();
+	hr = g_pd3dDevice->CreatePixelShader(pPSBlob->GetBufferPointer(), pPSBlob->GetBufferSize(), nullptr, &g_pPixelShader);
+	pPSBlob->Release();
+	if (FAILED(hr))
+		return hr;
+
+	return hr;
 }
 
 #include <iostream>
@@ -512,7 +553,7 @@ HRESULT InitDevice()
 #pragma region Create Shader
 	// Compile the vertex shader
 	ID3DBlob* pVSBlob = nullptr;
-	hr = CompileShaderFromFile(L"Shaders2_ori.hlsl", "VS_TEST", "vs_4_0", &pVSBlob);
+	hr = CompileShaderFromFile(L"Shaders.hlsl", "VS_TEST", "vs_4_0", &pVSBlob);
 	if (FAILED(hr))
 	{
 		MessageBox(nullptr, L"Vertex Shader Compiler Error!!", L"Error!!", MB_OK);
@@ -532,6 +573,7 @@ HRESULT InitDevice()
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	UINT numElements = ARRAYSIZE(layout);
 
@@ -546,7 +588,7 @@ HRESULT InitDevice()
 
 	// Compile the pixel shader
 	ID3DBlob* pPSBlob = nullptr;
-	hr = CompileShaderFromFile(L"Shaders2_ori.hlsl", "PS", "ps_4_0", &pPSBlob);
+	hr = CompileShaderFromFile(L"Shaders.hlsl", "PS", "ps_4_0", &pPSBlob);
 	if (FAILED(hr))
 	{
 		MessageBox(nullptr, L"Pixel Shader Compiler Error!!", L"Error", MB_OK);
@@ -562,27 +604,34 @@ HRESULT InitDevice()
 #pragma endregion Create Shader
 
 #pragma region Create a cube
-	struct SimpleVertex
+	struct CubeVertex
 	{
 		Vector3 Pos;
 		Vector4 Color;
+		Vector3 Nor;
 	};
 
-	SimpleVertex vertices[] =
+	CubeVertex vertices[] =
 	{
-		{ Vector3(-0.5f, 0.5f, -0.5f), Vector4(0.0f, 0.0f, 1.0f, 1.0f) },
-		{ Vector3(0.5f, 0.5f, -0.5f), Vector4(0.0f, 1.0f, 0.0f, 1.0f) },
-		{ Vector3(0.5f, 0.5f, 0.5f), Vector4(0.0f, 1.0f, 1.0f, 1.0f) },
-		{ Vector3(-0.5f, 0.5f, 0.5f), Vector4(1.0f, 0.0f, 0.0f, 1.0f) },
-		{ Vector3(-0.5f, -0.5f, -0.5f), Vector4(1.0f, 0.0f, 1.0f, 1.0f) },
-		{ Vector3(0.5f, -0.5f, -0.5f), Vector4(1.0f, 1.0f, 0.0f, 1.0f) },
-		{ Vector3(0.5f, -0.5f, 0.5f), Vector4(1.0f, 1.0f, 1.0f, 1.0f) },
-		{ Vector3(-0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.0f, 0.0f, 1.0f) },
+		{ Vector3(-0.5f, 0.5f, -0.5f), Vector4(0.0f, 0.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, 0.5f, -0.5f), Vector4(0.0f, 1.0f, 0.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, 0.5f, 0.5f), Vector4(0.0f, 1.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(-0.5f, 0.5f, 0.5f), Vector4(1.0f, 0.0f, 0.0f, 1.0f), Vector3() },
+		{ Vector3(-0.5f, -0.5f, -0.5f), Vector4(1.0f, 0.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, -0.5f, -0.5f), Vector4(1.0f, 1.0f, 0.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, -0.5f, 0.5f), Vector4(1.0f, 1.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(-0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector3() },
 	};
+	for (int i = 0; i < 8; i++)
+	{
+		CubeVertex& vtx = vertices[i];
+		vtx.Nor = vtx.Pos;
+		vtx.Nor.Normalize();
+	}
 
 	D3D11_BUFFER_DESC bd = {}; // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_buffer_desc
 	bd.Usage = D3D11_USAGE_IMMUTABLE; // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_usage 
-	bd.ByteWidth = sizeof(SimpleVertex) * ARRAYSIZE(vertices);
+	bd.ByteWidth = sizeof(CubeVertex) * ARRAYSIZE(vertices);
 	bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	bd.CPUAccessFlags = 0;
 
@@ -593,10 +642,10 @@ HRESULT InitDevice()
 		return hr;
 
 	// Set vertex buffer
-	UINT stride = sizeof(SimpleVertex);
+	UINT stride = sizeof(CubeVertex);
 	UINT offset = 0;
 	g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pVertexBuffer, &stride, &offset);
-	
+
 	// Create index buffer
 	WORD indices[] =
 	{
@@ -636,16 +685,23 @@ HRESULT InitDevice()
 
 	// Create the constant buffer
 	bd.Usage = D3D11_USAGE_DEFAULT;
-	bd.ByteWidth = sizeof(ConstantBuffer);
+	bd.ByteWidth = sizeof(TransformCBuffer);
 	bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	bd.CPUAccessFlags = 0;
-	hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &g_pConstantBuffer);
+	hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &g_pTransformCBuffer);
+	if (FAILED(hr))
+		return hr;
+
+	bd.Usage = D3D11_USAGE_DEFAULT;
+	bd.ByteWidth = sizeof(LightCBuffer);
+	bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bd.CPUAccessFlags = 0;
+	hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &g_pLightCBuffer);
 	if (FAILED(hr))
 		return hr;
 
 #pragma region Transform Setting
 	g_mWorld = Matrix::CreateScale(10.f);
-	//g_mWorld = Matrix::CreateTranslation(-3.0f, 1.0f, 1.0f);
 
 	g_pos_eye = Vector3(0.0f, 0.0f, 20.0f);
 	g_pos_at = Vector3(0.0f, 0.0f, 0.0f);
@@ -679,6 +735,7 @@ HRESULT InitDevice()
 	hr = g_pd3dDevice->CreateDepthStencilState(&descDepthStencil, &g_pDSState);
 #pragma endregion
 
+
 	return hr;
 }
 
@@ -690,12 +747,19 @@ void Render()
 	//Matrix matR = Matrix::CreateRotationY(DirectX::XM_PI / 10000.f);
 	//g_mWorld = matR * g_mWorld;
 
-	ConstantBuffer cb;
-	cb.mWorld = g_mWorld.Transpose();
-	cb.mView = g_mView.Transpose();
-	cb.mProjection = g_mProjection.Transpose();
-	g_pImmediateContext->UpdateSubresource(g_pConstantBuffer, 0, nullptr, &cb, 0, 0);
-	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer);
+	TransformCBuffer cbTransforms;
+	cbTransforms.mWorld = g_mWorld.Transpose();
+	cbTransforms.mView = g_mView.Transpose();
+	cbTransforms.mProjection = g_mProjection.Transpose();
+	g_pImmediateContext->UpdateSubresource(g_pTransformCBuffer, 0, nullptr, &cbTransforms, 0, 0);
+	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pTransformCBuffer);
+
+	LightCBuffer cbLight;
+	cbLight.posLightCS = Vector3::Transform(Vector3(0, 8, 0), g_mView);
+	cbLight.lightFlag = 777;
+	g_pImmediateContext->UpdateSubresource(g_pLightCBuffer, 0, nullptr, &cbLight, 0, 0);
+	//g_pImmediateContext->VSSetConstantBuffers(1, 1, &g_pLightCBuffer);
+	g_pImmediateContext->PSSetConstantBuffers(1, 1, &g_pLightCBuffer);
 
 	g_pImmediateContext->RSSetState(g_pRSState);
 	g_pImmediateContext->OMSetDepthStencilState(g_pDSState, 0);
@@ -722,7 +786,8 @@ void CleanupDevice()
 {
 	if (g_pImmediateContext) g_pImmediateContext->ClearState();
 
-	if (g_pConstantBuffer) g_pConstantBuffer->Release();
+	if (g_pTransformCBuffer) g_pTransformCBuffer->Release();
+	if (g_pLightCBuffer) g_pLightCBuffer->Release();
 	if (g_pIndexBuffer) g_pIndexBuffer->Release();
 	if (g_pVertexBuffer) g_pVertexBuffer->Release();
 	if (g_pVertexLayout) g_pVertexLayout->Release();

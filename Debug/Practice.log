@@ -1,2 +1,6 @@
-﻿  practice_4_hw_박형빈.cpp
+﻿FXC : warning X4717: Effects deprecated for D3DCompiler_47
+C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\Shaders5.hlsl(44,28-61): warning X3206: 'mul': implicit truncation of vector type
+C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\Shaders5.hlsl(44,5-62): warning X3206: implicit truncation of vector type
+  
+  compilation object save succeeded; see C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Debug\Shaders5.cso
   Practice.vcxproj -> C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Debug\Practice.exe
