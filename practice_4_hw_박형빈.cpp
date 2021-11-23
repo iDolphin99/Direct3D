@@ -201,7 +201,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	static Vector3 pos_start_np_ws;
 	static Vector3 pos_start_eye_ws, pos_start_at_ws, vec_start_up;
 	static Matrix mView_start;
-	static Matrix mWorld_start = g_mWorld;
+	static Matrix mWorld_start;
 	switch (message)
 	{
 	case WM_COMMAND:
@@ -232,6 +232,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		pos_start_at_ws = g_pos_at;
 		vec_start_up = g_vec_up;
 		mView_start = g_mView;
+		mWorld_start = g_mWorld;
 	}
 	break;
 	case WM_MOUSEMOVE:
@@ -245,7 +246,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		if (wParam & MK_LBUTTON)
 		{
 #pragma region HW part 1 Rotation
-			// To Do
 			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
 			//printf("%f, %f, %f\n", pos_start_np_ws.x, pos_start_np_ws.y, pos_start_np_ws.z);
 			
@@ -253,28 +253,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			vec_start_cam2np.Normalize();
 			Vector3 vec_cur_cam2np = pos_cur_np_ws - pos_start_eye_ws;
 			vec_cur_cam2np.Normalize();
-			float angle_rad = acosf(vec_start_cam2np.Dot(vec_cur_cam2np)) * 0.4f;
-			
-			Vector3 rot_axis = vec_start_cam2np.Cross(vec_cur_cam2np);
+			float angle_rad = acosf(vec_start_cam2np.Dot(vec_cur_cam2np)) * 3.0f;
+			Vector3 rot_axis = vec_start_cam2np.Cross(vec_cur_cam2np); 
 			if (rot_axis.LengthSquared() > 0.000001)
 			{
-				printf("%f\n", angle_rad);
+				//printf("%f\n", angle_rad);
 				rot_axis.Normalize();
-				
-				Matrix matR = Matrix::CreateFromAxisAngle(rot_axis, angle_rad);
-				
-				//g_pos_eye = Vector3::Transform(pos_start_eye_ws, matR);
-				//g_pos_at = no change
-				//g_vec_up = Vector3::TransformNormal(vec_start_up, matR);
+				Matrix matR = Matrix::CreateFromAxisAngle(rot_axis, -angle_rad);
+				g_mWorld = mWorld_start * matR;
 			}
-			Matrix matR = Matrix::CreateFromAxisAngle(rot_axis, angle_rad);
-			g_mWorld = matR * g_mWorld; // 교수님 설명할 때 이렇게 했더라 
+			printf("%f %f %f \n", g_mWorld._41, g_mWorld._42, g_mWorld._43);
 #pragma endregion HW part 1 
 		}
 		else if (wParam & MK_RBUTTON)
 		{
 #pragma region HW part 2 Panning
-			// To Do
 			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
 			
 			float dist_at = (pos_start_at_ws - pos_start_eye_ws).Length();
@@ -284,27 +277,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			float dist_diff = dist_diff_np / 0.01f * dist_at;
 			if (dist_diff_np > 0.000001)
 			{
-				Vector3 vec_diff = vec_diff_np / dist_diff_np * dist_diff * (0.05f);
-				Matrix matP = g_mWorld.CreateTranslation(vec_diff);
-				g_mWorld = g_mWorld * matP;
-				printf("%f %f %f \n", vec_diff.x, vec_diff.y, vec_diff.z);
-				
-				//g_pos_eye = pos_start_eye_ws + vec_diff;
-				//g_pos_at = pos_start_at_ws + vec_diff;
+				Vector3 vec_diff = vec_diff_np / dist_diff_np * dist_diff;
+				Matrix matP = Matrix::CreateTranslation(vec_diff);
+				g_mWorld = mWorld_start * matP;
+				// printf("%f %f %f \n", g_mWorld._41, g_mWorld._42, g_mWorld._43);
 			}
-
-			//g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 #pragma endregion HW part 2
 		}
 	}
 	break;
 	case WM_MOUSEWHEEL:
 	{
-		int zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
 #pragma region HW part 3 Wheel
+		int zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
 		float move_delta = zDelta > 0 ? 1.05f : 0.95f;
 		Matrix matZ = Matrix::CreateScale(move_delta);
 		g_mWorld = g_mWorld * matZ;	
+		printf("%f %f %f \n", g_mWorld._41, g_mWorld._42, g_mWorld._43);
 #pragma endregion HW part 3
 	}
 	break;

@@ -105,7 +105,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	while (WM_QUIT != msg.message)
 	{
 		if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
-		{
+		{	// 외부 메시지가 들어왔을 때 출력 
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
