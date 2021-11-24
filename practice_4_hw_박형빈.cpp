@@ -264,7 +264,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			}
 			printf("%f %f %f \n", g_mWorld._41, g_mWorld._42, g_mWorld._43);
 #pragma endregion HW part 1 
-		}
+		}	
 		else if (wParam & MK_RBUTTON)
 		{
 #pragma region HW part 2 Panning
@@ -318,7 +318,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	UNREFERENCED_PARAMETER(lParam);
-	switch (message)
+	switch (message)	
 	{
 	case WM_INITDIALOG:
 		return (INT_PTR)TRUE;
