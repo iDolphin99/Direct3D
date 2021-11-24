@@ -248,7 +248,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 #pragma region HW part 1 Rotation
 			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
 			//printf("%f, %f, %f\n", pos_start_np_ws.x, pos_start_np_ws.y, pos_start_np_ws.z);
-			
+			//why not this commit...
 			Vector3 vec_start_cam2np = pos_start_np_ws - pos_start_eye_ws;
 			vec_start_cam2np.Normalize();
 			Vector3 vec_cur_cam2np = pos_cur_np_ws - pos_start_eye_ws;
