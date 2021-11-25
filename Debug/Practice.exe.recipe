@@ -12,6 +12,9 @@
     <ContentFile>
       <FullPath>C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Debug\Shaders5.cso</FullPath>
     </ContentFile>
+    <ContentFile>
+      <FullPath>C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Debug\Shaders5_ori.cso</FullPath>
+    </ContentFile>
   </ContentFiles>
   <SatelliteDlls />
   <NonRecipeFileRefs />

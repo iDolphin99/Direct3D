@@ -189,6 +189,7 @@
   <ItemGroup>
     <FxCompile Include="Shaders2_ori.hlsl" />
     <FxCompile Include="Shaders5.hlsl" />
+    <FxCompile Include="Shaders5_ori.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="practice_4.cpp">
@@ -197,10 +198,16 @@
     <ClCompile Include="practice_4_hw_박형빈.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="practice_5_hw_박형빈.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="practice_5.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="practice_5_ori.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="practice_5_test.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
     </ClCompile>
   </ItemGroup>
