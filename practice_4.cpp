@@ -1,5 +1,5 @@
 // practice_1.cpp : Defines the entry point for the application.
-//
+// 
 
 #include "framework.h"
 #include "Practice.h"
@@ -512,6 +512,8 @@ HRESULT InitDevice()
 	vp.TopLeftX = 0;
 	vp.TopLeftY = 0;
 	g_pImmediateContext->RSSetViewports(1, &vp);
+	// 임의의 WS기준 Y축 기준 매 프레임마다 도는 실습도 해보았음
+	// HW1에서는 camera를 SS mouse event로 control 하려고 했었음 -> 설명으로 대체 
 
 #pragma region Create Shader
 	// Compile the vertex shader
@@ -604,6 +606,7 @@ HRESULT InitDevice()
 	// Create index buffer
 	WORD indices[] =
 	{
+		// CCW방식
 		3,1,0,
 		2,1,3,
 
