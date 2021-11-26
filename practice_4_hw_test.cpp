@@ -1,4 +1,4 @@
-// practice_1.cpp : Defines the entry point for the application.
+﻿// practice_1.cpp : Defines the entry point for the application.
 //
 
 #include "framework.h"
@@ -67,8 +67,9 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 HRESULT InitDevice();
 void CleanupDevice();
 void Render();
-#pragma endregion
 
+
+#pragma endregion
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	_In_opt_ HINSTANCE hPrevInstance,
@@ -175,7 +176,7 @@ Vector3 ComputePosSS2WS(int x, int y, const Matrix& mView)
 	GetWindowRect(g_hWnd, &rc);
 	float w = (float)(rc.right - rc.left);
 	float h = (float)(rc.bottom - rc.top);
-	Vector3 pos_ps = Vector3((float)x / w * 2 - 1, -(float)y / h * 2 + 1, 0); 
+	Vector3 pos_ps = Vector3((float)x / w * 2 - 1, -(float)y / h * 2 + 1, 0);
 	Matrix matPS2CS;
 	g_mProjection.Invert(matPS2CS);
 	Matrix matCS2WS;
@@ -225,7 +226,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
-		
+
 		pos_start_np_ws = ComputePosSS2WS(xPos, yPos, g_mView);
 		pos_start_eye_ws = g_pos_eye;
 		pos_start_at_ws = g_pos_at;
@@ -235,10 +236,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	}
 	break;
 	case WM_MOUSEMOVE:
-	{
 		// WndProc mouse move
 		// https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove
 		// https://docs.microsoft.com/en-us/windows/win32/learnwin32/mouse-clicks
+	{
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
 
@@ -246,7 +247,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 #pragma region HW part 1 Rotation
 			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
-			
+			//printf("%f, %f, %f\n", pos_start_np_ws.x, pos_start_np_ws.y, pos_start_np_ws.z);
 			Vector3 vec_start_cam2np = pos_start_np_ws - pos_start_eye_ws;
 			vec_start_cam2np.Normalize();
 			Vector3 vec_cur_cam2np = pos_cur_np_ws - pos_start_eye_ws;
@@ -257,37 +258,39 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			Matrix mCube;
 			Matrix mWorld_start_copy = mWorld_start;
-			mWorld_start_copy._41 = 0;
-			mWorld_start_copy._42 = 0;
-			mWorld_start_copy._43 = 0;
+			//mWorld_start_copy._41 = 0;
+			//mWorld_start_copy._42 = 0;
+			//mWorld_start_copy._43 = 0;
 			mWorld_start_copy.Invert(mCube);
 			rot_axis = Vector3::Transform(rot_axis, mCube);
-			
+
 			if (rot_axis.LengthSquared() > 0.000001)
 			{
-				printf("%f\n", angle_rad);
+				
 				rot_axis.Normalize();
+				printf("%f %f %f \n", rot_axis.x, rot_axis.y, rot_axis.z);
 				Matrix matR = Matrix::CreateFromAxisAngle(rot_axis, -angle_rad);
 				g_mWorld = matR * mWorld_start;
 			}
+			
 #pragma endregion HW part 1 
-		}	
+		}
 		else if (wParam & MK_RBUTTON)
 		{
 #pragma region HW part 2 Panning
 			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
-			
+
 			float dist_at = (pos_start_at_ws - pos_start_eye_ws).Length();
 			// np : 0.01f
 			Vector3 vec_diff_np = pos_cur_np_ws - pos_start_np_ws;
 			float dist_diff_np = vec_diff_np.Length();
 			float dist_diff = dist_diff_np / 0.01f * dist_at;
-			
 			if (dist_diff_np > 0.000001)
 			{
 				Vector3 vec_diff = vec_diff_np / dist_diff_np * dist_diff;
 				Matrix matP = Matrix::CreateTranslation(vec_diff);
 				g_mWorld = mWorld_start * matP;
+				// printf("%f %f %f \n", g_mWorld._41, g_mWorld._42, g_mWorld._43);
 			}
 #pragma endregion HW part 2
 		}
@@ -298,9 +301,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 #pragma region HW part 3 Wheel
 		int zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
 		float move_delta = zDelta > 0 ? 1.05f : 0.95f;
-		
 		Matrix matZ = Matrix::CreateScale(move_delta);
-		g_mWorld = g_mWorld * matZ;	
+		g_mWorld = g_mWorld * matZ;
+		printf("%f %f %f \n", g_mWorld._41, g_mWorld._42, g_mWorld._43);
 #pragma endregion HW part 3
 	}
 	break;
@@ -325,7 +328,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	UNREFERENCED_PARAMETER(lParam);
-	switch (message)	
+	switch (message)
 	{
 	case WM_INITDIALOG:
 		return (INT_PTR)TRUE;
@@ -592,7 +595,7 @@ HRESULT InitDevice()
 	UINT stride = sizeof(SimpleVertex);
 	UINT offset = 0;
 	g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pVertexBuffer, &stride, &offset);
-	
+
 	// Create index buffer
 	WORD indices[] =
 	{
@@ -641,7 +644,8 @@ HRESULT InitDevice()
 
 #pragma region Transform Setting
 	g_mWorld = Matrix::CreateScale(10.f);
-	
+	//g_mWorld = Matrix::CreateTranslation(-3.0f, 1.0f, 1.0f);
+
 	g_pos_eye = Vector3(0.0f, 0.0f, 20.0f);
 	g_pos_at = Vector3(0.0f, 0.0f, 0.0f);
 	g_vec_up = Vector3(0.0f, 1.0f, 0.0f);

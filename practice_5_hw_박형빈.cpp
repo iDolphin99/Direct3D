@@ -206,6 +206,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	static Vector3 pos_start_np_ws;
 	static Vector3 pos_start_eye_ws, pos_start_at_ws, vec_start_up;
 	static Matrix mView_start, mWorld_start;
+
 	switch (message)
 	{
 	case WM_COMMAND:
@@ -244,10 +245,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		mWorld_start = g_mWorld;
 	}
 	break;
-	case WM_MOUSEMOVE:
+	case WM_MOUSEMOVE: 
 	{
+#pragma region Specification 1
 		// WndProc mouse move
 		// https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove
+		// https://docs.microsoft.com/en-us/windows/win32/learnwin32/mouse-clicks
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
 
@@ -261,6 +264,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			float angle_rad = acosf(vec_start_cam2np.Dot(vec_cur_cam2np)) * 3.0f;
 			Vector3 rot_axis = vec_start_cam2np.Cross(vec_cur_cam2np);
+
+			Matrix mCube;
+			Matrix mWorld_start_copy = mWorld_start;
+			mWorld_start_copy._41 = 0;
+			mWorld_start_copy._42 = 0;
+			mWorld_start_copy._43 = 0;
+			mWorld_start_copy.Invert(mCube);
+			rot_axis = Vector3::Transform(rot_axis, mCube);
 
 			if (rot_axis.LengthSquared() > 0.000001) {
 				printf("%f\n", angle_rad);
@@ -282,6 +293,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 		else if (wParam & MK_RBUTTON) {
 			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
+			
 			float dist_at = (pos_start_at_ws - pos_start_eye_ws).Length();
 			// np : 0.01f
 			Vector3 vec_diff_np = pos_cur_np_ws - pos_start_np_ws;
@@ -290,12 +302,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			if (dist_diff_np > 0.000001) {
 				Vector3 vec_diff = vec_diff_np / dist_diff_np * dist_diff;
-				printf("%f, %f, %f\n", pos_start_np_ws.x, pos_start_np_ws.y, pos_start_np_ws.z);
-
+				Matrix matP = Matrix::CreateTranslation(vec_diff);
+				
 				if (wParam & MK_CONTROL) {
-					Matrix matP = Matrix::CreateTranslation(vec_diff);
-					g_mWorld = mWorld_start * matP;
 					printf("keydown \n");
+					g_mWorld = mWorld_start * matP;
 				}
 				else {
 					g_pos_eye = pos_start_eye_ws - vec_diff;
@@ -326,6 +337,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 		}
 	}
+#pragma endregion
+
 	break;
 	case WM_PAINT:
 	{

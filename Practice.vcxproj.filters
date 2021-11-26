@@ -79,5 +79,8 @@
     <ClCompile Include="practice_5_test.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="practice_4_hw_test.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
