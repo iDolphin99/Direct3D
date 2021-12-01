@@ -6,10 +6,24 @@ cbuffer TransformCBuffer : register(b0)
     matrix mProjection;
 }
 // Constant buffer에 저장되는 값들이 이 shader에서 mapping이 된다 
-cbuffer LightBuffer : register(b1)
+cbuffer LightCBuffer : register(b1)
 {
-    float3 posLightCS;
+    float3 posLightCS; 
     int lightFlag;
+    
+    float3 lightColor;
+    int dummy1;
+}
+// Material property 
+cbuffer MtCBuffer : register(b2)
+{
+    float3 mtcAmbient; //12
+    float shine;       //4
+
+    float3 mtcDiffuse; //12
+    float dummy2;      //4
+    float3 mtcSpec;    //12
+    float dummy3;      //4
 }
 
 
@@ -37,11 +51,12 @@ PS_INPUT VS_TEST(VS_INPUT input)
     PS_INPUT output = (PS_INPUT)0;
     output.Pos = mul(input.Pos, mWorld);
     output.Pos = mul(output.Pos, mView);
-    output.PosCS = output.Pos.xyz / output.Pos.w; // CS의 position이 들어가게 됨 
+    output.PosCS = output.Pos.xyz / output.Pos.w; // Vertex의 CS의 position이 들어가게 됨 
 
     output.Pos = mul(output.Pos, mProjection);
     output.Color = input.Color;
     output.Nor = normalize(mul(input.Nor, mul(mView, mWorld)));
+
     // normal vector가 잘 나오는지 확인하기 위해서 PS_INPUT으로 뺐고, 이 normal vector를 통해 cube를 색칠해보겠음 
     // 그런데 이 normal vector는 OS의 noraml임, 실제 lighting을 하기에 효율적인 space는 CS임 
     // 그렇기에 이 normal vector를 CS로 변경해야 한다. 
@@ -63,16 +78,33 @@ PS_INPUT VS_TEST(VS_INPUT input)
     return output;
 }
 
+
 // color를 output으로 내는 phonglighting function 
 float3 PhongLighting(float3 L, float3 N, float3 R, float3 V, 
     float3 mtcAmbient, float3 mtcDiffuse, float3 mtcSpec, float shininess, 
     float3 lightColor){
-    return float3(0, 1, 1);
+
+    float dotNL = dot(N, L);
+
+    //if (dot(N, L) <= 0) R = (float3)0; 
+    //float3 mtL = mtColor * lColor;
+    // in CS, V is (0, 0, -1)
+    // dot(R, V) equals to -R.z
+
+    return mtcAmbient * lightColor + mtcDiffuse * lightColor * max(dotNL, 0) + mtcSpec * lightColor * pow(max(dot(R, V), 0), shininess);
 }
 float3 PhongLighting2(float3 L, float3 N, float3 R, float3 V,
     float3 mtcAmbient, float3 mtcDiffuse, float3 mtcSpec, float shininess,
     float3 lightColor) {
-    return float3(0, 1, 1);
+
+    float dotNL = dot(N, L);
+    if (dot(N, L) <= 0) R = (float3)0;
+
+    // float3 mtL = mtColor * lColor;
+    // in CS, V is (0, 0, -1)
+    // dot(R, V) equals to -R.z
+
+    return mtcAmbient * lightColor + mtcDiffuse * lightColor * max(dotNL, 0) + mtcSpec * lightColor * pow(max(dot(R, V),0), shininess);
 }
 
 
@@ -83,30 +115,40 @@ float4 PS(PS_INPUT input) : SV_Target
 {
     // 최종적으로 phonglighting이 되도록 위의 함수 PhongLighting 함수와 아래에 L,N,R,V를 계산하도록 구현하세요 
 
-    // Phong lighting을 위해서 추가적으로 필요한 식을 작성
-    // Light Color -> 얘는 편의상 하나만 
-    float3 lightColor = float3(1.f, 1.f, 1.f);// white 
-    // Material Color -> ambient, diffuse, specular, shininess 
-    float3 mtcAmbient = float3(0.1f, 0.1f, 0.1f); // white, 약하게 
-    float3 mtcDiffuse = float3(0.7f, 0.7f, 0);   // yellow, 강하게 
-    float3 mtcSpec = float3(0.2f, 0, 0.2f);      // 보라색 계열로 
-    float shine = 100.f;
-    // Light type (point light)... 
-    // light, normal, reflection, veiw vector를 각각 우리가 계산해야 함...!!! 
-    // L은 light position이 위에 있고 N은 unit_nor에 있고 V는 뭐 어케 알수있겠죠? R 구현하세요! 
-    float3 L, N, R, V; 
-
-    float3 colorOut =  PhongLighting(L, N, R, V,
-        mtcAmbient, mtcDiffuse, mtcSpec, shine,
-        lightColor);
-
     // Normal vector를 그려서 확인할 수 있음 
     // Normal vector는 그런데 -1 ~ 1사이의 값을 갖고 color는 0~1의 값을 가지기 때문에 강제로 변환해 주어야 함 
     float3 posCS = input.PosCS;
     float3 unit_nor = normalize(input.Nor);
+
+    // light source , surface normal, prefect reflector, viewing direction 
+    float3 L, N, R, V;
+    L = normalize(posLightCS - posCS);
+    N = unit_nor;
+    R = normalize(2 * (dot(N, L)) * N - L);
+    V = normalize(-posCS);
+
+
+    float3 colorOut = PhongLighting(L, N, R, V,
+        mtcAmbient, mtcDiffuse, mtcSpec, shine,
+        lightColor);
+
+
+    float3 test = float3(0.1f, 0.1f, 0.1f);
+    bool flag = false;
+    if (mtcAmbient.x == test.x) {
+        flag = true;
+    }   
+
+    //return flag ? float4(1, 0, 0, 1) : float4(0, 1, 0, 1); //
     return float4(colorOut, 1);
-    //return lightFlag == 777 ? float4(1, 0, 0, 1) : float4(0, 1, 0, 1); // flag가 777이면 빨강 아니면 녹색 출력
 }
+
+
+
+// Light type (point light)... 
+// light, normal, reflection, veiw vector를 각각 우리가 계산해야 함...!!! 
+// L은 light position이 위에 있고 N은 unit_nor에 있고 V는 뭐 어케 알수있겠죠? R 구현하세요! 
+
 // Normal vector가 PS로 들어올때는 PS_INPUT의 attribute들이 vertex 단위로 저장되어 있고 
 // PS(FS)에서는 interpolation, scan line conversion algorithm을 통한 interpolation 된 값이 들어오게 됨 
 // 그러면 normal vector 값이 unit vector 값으로 들어오지 않을 수 있기 때문에 이에 대해 처리해주어야 함 -> 그래서 명시적으로 normalize 함수를 겉에 씌움  

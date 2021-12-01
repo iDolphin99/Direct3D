@@ -32,7 +32,7 @@ ID3D11Device* g_pd3dDevice = nullptr;
 ID3D11DeviceContext* g_pImmediateContext = nullptr;
 IDXGISwapChain* g_pSwapChain = nullptr;
 ID3D11RenderTargetView* g_pRenderTargetView = nullptr;
-
+	
 // This practice..
 ID3D11VertexShader* g_pVertexShader = nullptr;
 ID3D11PixelShader* g_pPixelShader = nullptr;
@@ -41,6 +41,7 @@ ID3D11Buffer* g_pVertexBuffer = nullptr;
 ID3D11Buffer* g_pIndexBuffer = nullptr;
 ID3D11Buffer* g_pTransformCBuffer = nullptr;
 ID3D11Buffer* g_pLightCBuffer = nullptr;
+ID3D11Buffer* g_pMtCBuffer = nullptr;
 
 ID3D11Texture2D* g_pDepthStencil = nullptr;
 ID3D11DepthStencilView* g_pDepthStencilView = nullptr;
@@ -59,6 +60,20 @@ struct LightCBuffer
 {
 	Vector3 posLightCS;
 	int lightFlag;
+
+	Vector3 lightColor;
+	int dummy1;
+};
+
+struct MtCBuffer
+{
+	Vector3 mtcAmbient; 
+	float shine;
+
+	Vector3 mtcDiffuse;
+	float dummy2;
+	Vector3 mtcSpec;    
+	float dummy3;
 };
 
 Matrix g_mWorld, g_mView, g_mProjection;
@@ -173,7 +188,6 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
 
 	return S_OK;
 }
-
 
 Vector3 ComputePosSS2WS(int x, int y, const Matrix& mView)
 {
@@ -734,6 +748,14 @@ HRESULT InitDevice()
 	if (FAILED(hr))
 		return hr;
 
+	bd.Usage = D3D11_USAGE_DEFAULT;
+	bd.ByteWidth = sizeof(MtCBuffer);
+	bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bd.CPUAccessFlags = 0;
+	hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &g_pMtCBuffer);
+	if (FAILED(hr))
+		return hr;
+
 #pragma region Transform Setting
 	g_mWorld = Matrix::CreateScale(10.f);
 
@@ -769,7 +791,6 @@ HRESULT InitDevice()
 	hr = g_pd3dDevice->CreateDepthStencilState(&descDepthStencil, &g_pDSState);
 #pragma endregion
 
-
 	return hr;
 }
 
@@ -784,21 +805,32 @@ void Render()
 	cb.mProjection = g_mProjection.Transpose();
 	g_pImmediateContext->UpdateSubresource(g_pTransformCBuffer, 0, nullptr, &cb, 0, 0);
 	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pTransformCBuffer);
+	
 	// 해당 GPU resource를 pointing 하고 있는 direct3D pointer의 해당 application의 structure를 할당하고 있음 이를 똑같이 해주어야 함 
-	LightCBuffer cbLight;
 	// (0,8,0)은 WS의 점이므로 이를 CS로 Transform, 변환해주어야 한다
-	cbLight.posLightCS = Vector3::Transform(Vector3(0, 8, 0), g_mView);
 	// 임의로 flag값이 잘 들어가고 있는지 확인해보기 위해서 실험차 넣은 것임 
-	cbLight.lightFlag = 777;
 	// cbLight라는 structure가 D3D11 constant buffer가 가르키는 GPU memory에 내용물이 update됨 
-	g_pImmediateContext->UpdateSubresource(g_pLightCBuffer, 0, nullptr, &cbLight, 0, 0);
 	// 이렇게 update 된 CBuffer를 vertex shader의 1번 slot에 넣겠음 
 	//g_pImmediateContext->VSSetConstantBuffers(1, 1, &g_pLightCBuffer);
 	// phong shading을 하기 위해서는 lightConstantBuffer를 PS에서도 읽어올 수 있어야 하기 때문에 GPU resource에 올라간 lightConstantbuffer를 PS에 set해주어야 한다 
 	// PS에서만 lightbuffer를 사용하면 위처럼 VSSet~은 주석처리하면 됨 
 	// 나중에 phongshading말고 다른 것도 실험하기 위해서는 주석처리를 풀어야 함!! 
 	// 이렇게 사소한 부분들, PS에서만 사용하므로 거기에만 set하고 VS에서는 쓰지 않으므로 set을 하지 않는 것과 같은 최적화는 memory, cashing 효율이 쌓이게 된다
+	LightCBuffer cbLight;
+	cbLight.posLightCS = Vector3::Transform(Vector3(0, 8, 0), g_mView);
+	cbLight.lightFlag = 777;
+	cbLight.lightColor = Vector3(1.f, 1.f, 1.f);	
+	g_pImmediateContext->UpdateSubresource(g_pLightCBuffer, 0, nullptr, &cbLight, 0, 0);
 	g_pImmediateContext->PSSetConstantBuffers(1, 1, &g_pLightCBuffer);
+
+	// HW2) contant buffer로 넘겨주기 
+	MtCBuffer mtb;
+	mtb.mtcAmbient = Vector3(0.1f, 0.1f, 0.1f);
+	mtb.shine = 100.f;
+	mtb.mtcDiffuse = Vector3(0.7f, 0.7f, 0.f);
+	mtb.mtcSpec = Vector3(0.2f, 0.f, 0.2f);
+	g_pImmediateContext->UpdateSubresource(g_pMtCBuffer, 0, nullptr, &mtb, 0, 0);
+	g_pImmediateContext->PSSetConstantBuffers(2, 1, &g_pMtCBuffer);
 
 	g_pImmediateContext->RSSetState(g_pRSState);
 	g_pImmediateContext->OMSetDepthStencilState(g_pDSState, 0);
@@ -827,6 +859,7 @@ void CleanupDevice()
 
 	if (g_pTransformCBuffer) g_pTransformCBuffer->Release();
 	if (g_pLightCBuffer) g_pLightCBuffer->Release();
+	if (g_pMtCBuffer) g_pMtCBuffer->Release();
 	if (g_pIndexBuffer) g_pIndexBuffer->Release();
 	if (g_pVertexBuffer) g_pVertexBuffer->Release();
 	if (g_pVertexLayout) g_pVertexLayout->Release();

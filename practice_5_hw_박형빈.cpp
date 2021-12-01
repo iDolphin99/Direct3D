@@ -41,6 +41,7 @@ ID3D11Buffer* g_pVertexBuffer = nullptr;
 ID3D11Buffer* g_pIndexBuffer = nullptr;
 ID3D11Buffer* g_pTransformCBuffer = nullptr;
 ID3D11Buffer* g_pLightCBuffer = nullptr;
+ID3D11Buffer* g_pMtCBuffer = nullptr;
 
 ID3D11Texture2D* g_pDepthStencil = nullptr;
 ID3D11DepthStencilView* g_pDepthStencilView = nullptr;
