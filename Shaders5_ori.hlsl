@@ -96,7 +96,7 @@ float4 PS(PS_INPUT input) : SV_Target
     // L은 light position이 위에 있고 N은 unit_nor에 있고 V는 뭐 어케 알수있겠죠? R 구현하세요! 
     float3 L, N, R, V; 
 
-    float3 colorOut =  PhongLighting(L, N, R, V,
+    float3 colorOut =  PhongLighting2(L, N, R, V,
         mtcAmbient, mtcDiffuse, mtcSpec, shine,
         lightColor);
 

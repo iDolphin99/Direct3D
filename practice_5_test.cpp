@@ -80,6 +80,7 @@ Matrix g_mWorld, g_mView, g_mProjection;
 
 // This practice..
 Vector3 g_pos_eye, g_pos_at, g_vec_up;
+int g_lightFlag;
 
 // Forward declarations of functions included in this code module:
 HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow);
@@ -241,7 +242,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	break;
 	case WM_KEYDOWN:
 	{
-		if (FAILED(Recompile())) printf("FAILED!!!!\n");
+		if (wParam == VK_BACK) if (FAILED(Recompile())) printf("FAILED!!!!\n");
+
+		// HW2.5) Add an option to the scene property : Paralle lighting or Point lighting
+		if (wParam == VK_NUMPAD1 or wParam == 0x31) g_lightFlag = 1;
+		if (wParam == VK_NUMPAD2 or wParam == 0x32) g_lightFlag = 2;
 	}
 	break;
 	case WM_LBUTTONDOWN:
@@ -280,6 +285,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				printf("%f\n", angle_rad);
 				rot_axis.Normalize();
 
+				// HW1) Control your camera and models 
 				if (wParam & MK_CONTROL) {
 					printf("keydown\n");
 					Matrix matR = Matrix::CreateFromAxisAngle(rot_axis, -angle_rad);
@@ -304,6 +310,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				Vector3 vec_diff = vec_diff_np / dist_diff_np * dist_diff;
 				printf("%f, %f, %f\n", pos_start_np_ws.x, pos_start_np_ws.y, pos_start_np_ws.z);
 				
+				// HW1) Control your camera and models
 				if (wParam & MK_CONTROL) {
 					Matrix matP = Matrix::CreateTranslation(vec_diff);
 					g_mWorld = mWorld_start * matP;
@@ -324,6 +331,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		Vector3 view_dir = (g_pos_at - g_pos_eye);
 		view_dir.Normalize();
 
+		// HW1) Control your camera and models
 		if (wParam & MK_CONTROL) {
 			move_delta = zDelta > 0 ? 1.05f : 0.95f;
 			Matrix matZ = Matrix::CreateScale(move_delta);
@@ -612,10 +620,10 @@ HRESULT InitDevice()
 		// 이렇게 하면 리소스 관리 측면에서 훨씬 효율적으로 사용할 수 있습니다. 
 		// UNORM 의 의미는 precision이 8bit로 저장되지만 shader안에서는 똑같이 float형태로 사용할 수 있다는 의미를 가진다. 
 		// A four-component, 32-bit unsigned-normalized-integer format that supports 8 bits per channel including alpha.
-		// HW1) Try to replace Vertex Color Attribute
+		// HW2.1) Try to replace Vertex Color Attribute
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0}
+		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0}
 	};
 	UINT numElements = ARRAYSIZE(layout);
 
@@ -658,14 +666,14 @@ HRESULT InitDevice()
 
 	CubeVertex vertices[] =
 	{
-		{ Vector3(-0.5f, 0.5f, -0.5f), Vector4(0.0f, 0.0f, 1.0f, 1.0f), Vector3()},
-		{ Vector3(0.5f, 0.5f, -0.5f), Vector4(0.0f, 1.0f, 0.0f, 1.0f) ,Vector3() },
-		{ Vector3(0.5f, 0.5f, 0.5f), Vector4(0.0f, 1.0f, 1.0f, 1.0f) ,Vector3() },
-		{ Vector3(-0.5f, 0.5f, 0.5f), Vector4(1.0f, 0.0f, 0.0f, 1.0f) ,Vector3() },
-		{ Vector3(-0.5f, -0.5f, -0.5f), Vector4(1.0f, 0.0f, 1.0f, 1.0f) ,Vector3() },
-		{ Vector3(0.5f, -0.5f, -0.5f), Vector4(1.0f, 1.0f, 0.0f, 1.0f) ,Vector3() },
-		{ Vector3(0.5f, -0.5f, 0.5f), Vector4(1.0f, 1.0f, 1.0f, 1.0f) ,Vector3() },
-		{ Vector3(-0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.0f, 0.0f, 1.0f) ,Vector3() },
+		{ Vector3(-0.5f, 0.5f, -0.5f), Vector4(0.0f, 0.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, 0.5f, -0.5f), Vector4(0.0f, 1.0f, 0.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, 0.5f, 0.5f), Vector4(0.0f, 1.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(-0.5f, 0.5f, 0.5f), Vector4(1.0f, 0.0f, 0.0f, 1.0f), Vector3() },
+		{ Vector3(-0.5f, -0.5f, -0.5f), Vector4(1.0f, 0.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, -0.5f, -0.5f), Vector4(1.0f, 1.0f, 0.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, -0.5f, 0.5f), Vector4(1.0f, 1.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(-0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector3() },
 	};
 	for (int i = 0; i < 8; i++)
 	{
@@ -818,19 +826,24 @@ void Render()
 	// 이렇게 사소한 부분들, PS에서만 사용하므로 거기에만 set하고 VS에서는 쓰지 않으므로 set을 하지 않는 것과 같은 최적화는 memory, cashing 효율이 쌓이게 된다
 	LightCBuffer cbLight;
 	cbLight.posLightCS = Vector3::Transform(Vector3(0, 8, 0), g_mView);
-	cbLight.lightFlag = 777;
-	cbLight.lightColor = Vector3(1.f, 1.f, 1.f);	
+	// HW2.5) Add an option to the scene property : Paralle lighting or Point lighting
+	if (g_lightFlag == 2) cbLight.lightFlag = 2;
+	else cbLight.lightFlag = 1;
+	cbLight.lightColor = Vector3(1.0f, 1.0f, 1.0f);	
+	cbLight.dummy1 = 777;
 	g_pImmediateContext->UpdateSubresource(g_pLightCBuffer, 0, nullptr, &cbLight, 0, 0);
-	g_pImmediateContext->PSSetConstantBuffers(1, 1, &g_pLightCBuffer);
+	g_pImmediateContext->PSSetConstantBuffers(0, 1, &g_pLightCBuffer);
 
-	// HW2) contant buffer로 넘겨주기 
+	// HW2.4) contant buffer로 넘겨주기 
 	MtCBuffer mtb;
 	mtb.mtcAmbient = Vector3(0.1f, 0.1f, 0.1f);
-	mtb.shine = 100.f;
+	mtb.shine = 10.f;
 	mtb.mtcDiffuse = Vector3(0.7f, 0.7f, 0.f);
+	mtb.dummy2 = 777;
 	mtb.mtcSpec = Vector3(0.2f, 0.f, 0.2f);
+	mtb.dummy3 = 777;
 	g_pImmediateContext->UpdateSubresource(g_pMtCBuffer, 0, nullptr, &mtb, 0, 0);
-	g_pImmediateContext->PSSetConstantBuffers(2, 1, &g_pMtCBuffer);
+	g_pImmediateContext->PSSetConstantBuffers(1, 1, &g_pMtCBuffer);
 
 	g_pImmediateContext->RSSetState(g_pRSState);
 	g_pImmediateContext->OMSetDepthStencilState(g_pDSState, 0);

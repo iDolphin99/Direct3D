@@ -11,6 +11,16 @@
 #include <directxcolors.h>
 #include <d3dcompiler.h>
 
+#include "framework.h"
+#include "Practice.h"
+
+#include <windowsx.h>
+#include <stdio.h>
+
+#include <d3d11_1.h>
+#include <directxcolors.h>
+#include <d3dcompiler.h>
+
 #include <directxmath.h>
 #include "SimpleMath.h"
 
@@ -56,16 +66,31 @@ struct TransformCBuffer
 	Matrix mProjection;
 };
 
+// HW2.4) Register hard coding variables to Constant Buffers
 struct LightCBuffer
 {
 	Vector3 posLightCS;
 	int lightFlag;
+
+	Vector3 lightColor;
+	int dummy1;
+};
+struct MtCBuffer
+{
+	Vector3 mtcAmbient;
+	float shine;
+
+	Vector3 mtcDiffuse;
+	float dummy2;
+	Vector3 mtcSpec;
+	float dummy3;
 };
 
 Matrix g_mWorld, g_mView, g_mProjection;
 
 // This practice..
 Vector3 g_pos_eye, g_pos_at, g_vec_up;
+int g_lightFlag;
 
 // Forward declarations of functions included in this code module:
 HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow);
@@ -175,7 +200,6 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
 	return S_OK;
 }
 
-
 Vector3 ComputePosSS2WS(int x, int y, const Matrix& mView)
 {
 	RECT rc;
@@ -207,7 +231,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	static Vector3 pos_start_np_ws;
 	static Vector3 pos_start_eye_ws, pos_start_at_ws, vec_start_up;
 	static Matrix mView_start, mWorld_start;
-
 	switch (message)
 	{
 	case WM_COMMAND:
@@ -229,7 +252,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	break;
 	case WM_KEYDOWN:
 	{
-		if (FAILED(Recompile())) printf("FAILED!!!!\n");
+		if (wParam == VK_BACK) if (FAILED(Recompile())) printf("FAILED!!!!\n");
+
+		// HW2.5) Add an option to the scene property : Paralle lighting or Point lighting
+		if (wParam == VK_NUMPAD1 or wParam == 0x31) g_lightFlag = 1;
+		if (wParam == VK_NUMPAD2 or wParam == 0x32) g_lightFlag = 2;
 	}
 	break;
 	case WM_LBUTTONDOWN:
@@ -246,12 +273,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		mWorld_start = g_mWorld;
 	}
 	break;
-	case WM_MOUSEMOVE: 
+	case WM_MOUSEMOVE:
 	{
-#pragma region Specification 1
 		// WndProc mouse move
 		// https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mousemove
-		// https://docs.microsoft.com/en-us/windows/win32/learnwin32/mouse-clicks
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
 
@@ -266,18 +291,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			float angle_rad = acosf(vec_start_cam2np.Dot(vec_cur_cam2np)) * 3.0f;
 			Vector3 rot_axis = vec_start_cam2np.Cross(vec_cur_cam2np);
 
-			Matrix mCube;
-			Matrix mWorld_start_copy = mWorld_start;
-			mWorld_start_copy._41 = 0;
-			mWorld_start_copy._42 = 0;
-			mWorld_start_copy._43 = 0;
-			mWorld_start_copy.Invert(mCube);
-			rot_axis = Vector3::Transform(rot_axis, mCube);
-
 			if (rot_axis.LengthSquared() > 0.000001) {
 				printf("%f\n", angle_rad);
 				rot_axis.Normalize();
 
+				// HW1) Control your camera and models - Rotation
 				if (wParam & MK_CONTROL) {
 					printf("keydown\n");
 					Matrix matR = Matrix::CreateFromAxisAngle(rot_axis, -angle_rad);
@@ -294,7 +312,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 		else if (wParam & MK_RBUTTON) {
 			Vector3 pos_cur_np_ws = ComputePosSS2WS(xPos, yPos, mView_start);
-			
 			float dist_at = (pos_start_at_ws - pos_start_eye_ws).Length();
 			// np : 0.01f
 			Vector3 vec_diff_np = pos_cur_np_ws - pos_start_np_ws;
@@ -303,11 +320,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			if (dist_diff_np > 0.000001) {
 				Vector3 vec_diff = vec_diff_np / dist_diff_np * dist_diff;
-				Matrix matP = Matrix::CreateTranslation(vec_diff);
-				
+				printf("%f, %f, %f\n", pos_start_np_ws.x, pos_start_np_ws.y, pos_start_np_ws.z);
+
+				// HW1) Control your camera and models - Panning
 				if (wParam & MK_CONTROL) {
-					printf("keydown \n");
+					Matrix matP = Matrix::CreateTranslation(vec_diff);
 					g_mWorld = mWorld_start * matP;
+					printf("keydown \n");
 				}
 				else {
 					g_pos_eye = pos_start_eye_ws - vec_diff;
@@ -326,6 +345,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		Vector3 view_dir = (g_pos_at - g_pos_eye);
 		view_dir.Normalize();
 
+		// HW1) Control your camera and models - Zoom 
 		if (wParam & MK_CONTROL) {
 			move_delta = zDelta > 0 ? 1.05f : 0.95f;
 			Matrix matZ = Matrix::CreateScale(move_delta);
@@ -338,8 +358,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 		}
 	}
-#pragma endregion
-
 	break;
 	case WM_PAINT:
 	{
@@ -416,14 +434,6 @@ HRESULT CompileShaderFromFile(const WCHAR* szFileName, LPCSTR szEntryPoint, LPCS
 	return S_OK;
 }
 
-// runtime 중에도 shader를 수정했을 때 이를 window event, key event를 통해서 recompile하는 code 
-// initDevice에서 shader를 file로부터 읽어와서 만드는 code를 그대로 가져와서 구현한 코드이다
-// 다만, recompile하고 Blob에 저장이되고 이 Blob에 저장된 것을 가지고 vertex shader를 만들 때 globla variable로 뺀 vertex shader resource pointer를 그대로 사용하고 있음 
-// -> g_pVertexShader 
-// 다시 할당하기 전에 Release 안하고 하면 그전에 set된 것이 GPU memory 어딘가에 남아있음 
-// 그상태에서 resource를 생성하게 되면 프로그램을 종료할 때 이 code가 cleanIpDevice에서 불리게 되는데 
-// 기존에 할당되어 있던 부분은 Release가 안되게 되고 그렇게 되면 GPU memory leakege가 발생하게 된다. 
-// 그렇기 때문에 set을 하기 직전에 반드시 Releaser 하는 코드를 넣어야 함 (PS도 마찬가지!) 
 HRESULT Recompile()
 {
 	HRESULT hr = S_OK;
@@ -609,19 +619,12 @@ HRESULT InitDevice()
 	// Define the input layout
 	D3D11_INPUT_ELEMENT_DESC layout[] =
 	{
-		// vertex shader에 들어가는 vertex buffer의 구성에 Nor(Normal)이 추가되었기 때문에 INPUT_ELEMENT_DESC layout을 변경해야 합니다. 
-		// POSITION 에서 4byte 3개를 사용해서 0~12 byte를 차지합니다 -> 그러면 COLOR의 offset은 12가 됩니다. 
-		// COLOR 에서 DXGI_FORMAT_R32G32B32A32_FLOAT 사용하기 때문에 4byte 4개를 사용해서 offset 12부터 16byte를 차지하여 12~28byte를 차지합니다. -> 그러면 NORMAL의 offset은 28이 됩니다. 
-		// 여기서 COLOR input element 정보에는 DXGI_FORMAT_G8G8B8A8_UNORM 를 사용할 수 있습니다. 
-		// 이 경우 COLOR는 각 RGB채널이 8bit, 즉 1byte씩 color를 사용하고 color의 precision이 0~255로 각 channel을 쓰게 됩니다. color 정보는 이정도 precision이면 충분합니다. 
-		// 1byte씩 RGBA(RED, GREEN, BLUE, ALPHA) 총 4byte를 사용하므로 이 경우 COLOR는 offset 12부터 16까지 차지하게 됩니다. -> 그러면 NORMAL의 offset은 16이 될 수 있습니다. 
-		// 이렇게 하면 리소스 관리 측면에서 훨씬 효율적으로 사용할 수 있습니다. 
-		// UNORM 의 의미는 precision이 8bit로 저장되지만 shader안에서는 똑같이 float형태로 사용할 수 있다는 의미를 가진다. 
-		// A four-component, 32-bit unsigned-normalized-integer format that supports 8 bits per channel including alpha.
-		// HW1) Try to replace Vertex Color Attribute
+		// HW2.1) Replace Vertex Color Attribute 
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0}
+		 { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		 { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0}
+		//{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		//{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0}
 	};
 	UINT numElements = ARRAYSIZE(layout);
 
@@ -635,9 +638,6 @@ HRESULT InitDevice()
 	g_pImmediateContext->IASetInputLayout(g_pVertexLayout);
 
 	// Compile the pixel shader
-	// Runtime에서 compile을 하고 compile된 shader를 GPU resource로 등록하고 runtime에서 GPU pipeline에 Device context가 set을 해주고 있음 
-	// 이는 즉 Runtime 에서 shader code를 수정하고 프로그램이 실행되고 있는 도중에 compile하고 이를 shader resource를 만들어서 set을 하면 
-	// 프로그램이 실행되고 있는 도중에도 바뀐 shader code의 결과를 볼 수 있게 됨 
 	ID3DBlob* pPSBlob = nullptr;
 	hr = CompileShaderFromFile(L"Shaders5.hlsl", "PS", "ps_4_0", &pPSBlob);
 	if (FAILED(hr))
@@ -664,27 +664,24 @@ HRESULT InitDevice()
 
 	CubeVertex vertices[] =
 	{
-		{ Vector3(-0.5f, 0.5f, -0.5f), Vector4(0.0f, 0.0f, 1.0f, 1.0f), Vector3()},
-		{ Vector3(0.5f, 0.5f, -0.5f), Vector4(0.0f, 1.0f, 0.0f, 1.0f) ,Vector3() },
-		{ Vector3(0.5f, 0.5f, 0.5f), Vector4(0.0f, 1.0f, 1.0f, 1.0f) ,Vector3() },
-		{ Vector3(-0.5f, 0.5f, 0.5f), Vector4(1.0f, 0.0f, 0.0f, 1.0f) ,Vector3() },
-		{ Vector3(-0.5f, -0.5f, -0.5f), Vector4(1.0f, 0.0f, 1.0f, 1.0f) ,Vector3() },
-		{ Vector3(0.5f, -0.5f, -0.5f), Vector4(1.0f, 1.0f, 0.0f, 1.0f) ,Vector3() },
-		{ Vector3(0.5f, -0.5f, 0.5f), Vector4(1.0f, 1.0f, 1.0f, 1.0f) ,Vector3() },
-		{ Vector3(-0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.0f, 0.0f, 1.0f) ,Vector3() },
+		{ Vector3(-0.5f, 0.5f, -0.5f), Vector4(0.0f, 0.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, 0.5f, -0.5f), Vector4(0.0f, 1.0f, 0.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, 0.5f, 0.5f), Vector4(0.0f, 1.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(-0.5f, 0.5f, 0.5f), Vector4(1.0f, 0.0f, 0.0f, 1.0f), Vector3() },
+		{ Vector3(-0.5f, -0.5f, -0.5f), Vector4(1.0f, 0.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, -0.5f, -0.5f), Vector4(1.0f, 1.0f, 0.0f, 1.0f), Vector3() },
+		{ Vector3(0.5f, -0.5f, 0.5f), Vector4(1.0f, 1.0f, 1.0f, 1.0f), Vector3() },
+		{ Vector3(-0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector3() },
 	};
 	for (int i = 0; i < 8; i++)
 	{
-		// pointer 개념을 써서 접근 하도록 하겠음, & syntax를 통해 해당 변수를 reference 처럼 사용할 수 있음 
-		// 만약 pointer를 쓰지 않으면 call by value가 되고 해당 routine에서만 쓰이고 parameter들이 삭제되기 때문에 
-		// & vtx pointer로 접근하여 vertices[]에 저장되어 있는 structure의 값을 변경할 수 있게 됨 
 		CubeVertex& vtx = vertices[i];
-		vtx.Nor = vtx.Pos;   // 엄밀히는 vtx.Pos  - Vector3(0,0,0)으로 작성한 원점으로부터의 position 방향이긴 함 
-		vtx.Nor.Normalize(); // position값이 normalized된 normal vector값을 얻게 된다. 
+		vtx.Nor = vtx.Pos;    
+		vtx.Nor.Normalize();  
 	}
 
-	D3D11_BUFFER_DESC bd = {}; // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_buffer_desc
-	bd.Usage = D3D11_USAGE_IMMUTABLE; // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_usage 
+	D3D11_BUFFER_DESC bd = {};		   // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_buffer_desc
+	bd.Usage = D3D11_USAGE_IMMUTABLE;  // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_usage 
 	bd.ByteWidth = sizeof(CubeVertex) * ARRAYSIZE(vertices);
 	bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	bd.CPUAccessFlags = 0;
@@ -746,11 +743,21 @@ HRESULT InitDevice()
 	if (FAILED(hr))
 		return hr;
 
+	// HW2.4) Register hard coding variables to Constant Buffers
 	bd.Usage = D3D11_USAGE_DEFAULT;
 	bd.ByteWidth = sizeof(LightCBuffer);
 	bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	bd.CPUAccessFlags = 0;
 	hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &g_pLightCBuffer);
+	if (FAILED(hr))
+		return hr;
+
+	// HW2.4) Register hard coding variables to Constant Buffers
+	bd.Usage = D3D11_USAGE_DEFAULT;
+	bd.ByteWidth = sizeof(MtCBuffer);
+	bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bd.CPUAccessFlags = 0;
+	hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &g_pMtCBuffer);
 	if (FAILED(hr))
 		return hr;
 
@@ -789,7 +796,6 @@ HRESULT InitDevice()
 	hr = g_pd3dDevice->CreateDepthStencilState(&descDepthStencil, &g_pDSState);
 #pragma endregion
 
-
 	return hr;
 }
 
@@ -804,21 +810,25 @@ void Render()
 	cb.mProjection = g_mProjection.Transpose();
 	g_pImmediateContext->UpdateSubresource(g_pTransformCBuffer, 0, nullptr, &cb, 0, 0);
 	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pTransformCBuffer);
-	// 해당 GPU resource를 pointing 하고 있는 direct3D pointer의 해당 application의 structure를 할당하고 있음 이를 똑같이 해주어야 함 
+
+	// HW2.4) Register hard coding variables to Constant Buffers
 	LightCBuffer cbLight;
-	// (0,8,0)은 WS의 점이므로 이를 CS로 Transform, 변환해주어야 한다
 	cbLight.posLightCS = Vector3::Transform(Vector3(0, 8, 0), g_mView);
-	// 임의로 flag값이 잘 들어가고 있는지 확인해보기 위해서 실험차 넣은 것임 
-	cbLight.lightFlag = 777;
-	// cbLight라는 structure가 D3D11 constant buffer가 가르키는 GPU memory에 내용물이 update됨 
+	// HW2.5) Add an option to the scene property : Paralle lighting or Point lighting
+	if (g_lightFlag == 2) cbLight.lightFlag = 2;
+	else cbLight.lightFlag = 1;
+	cbLight.lightColor = Vector3(1.0f, 1.0f, 1.0f);
 	g_pImmediateContext->UpdateSubresource(g_pLightCBuffer, 0, nullptr, &cbLight, 0, 0);
-	// 이렇게 update 된 CBuffer를 vertex shader의 1번 slot에 넣겠음 
-	//g_pImmediateContext->VSSetConstantBuffers(1, 1, &g_pLightCBuffer);
-	// phong shading을 하기 위해서는 lightConstantBuffer를 PS에서도 읽어올 수 있어야 하기 때문에 GPU resource에 올라간 lightConstantbuffer를 PS에 set해주어야 한다 
-	// PS에서만 lightbuffer를 사용하면 위처럼 VSSet~은 주석처리하면 됨 
-	// 나중에 phongshading말고 다른 것도 실험하기 위해서는 주석처리를 풀어야 함!! 
-	// 이렇게 사소한 부분들, PS에서만 사용하므로 거기에만 set하고 VS에서는 쓰지 않으므로 set을 하지 않는 것과 같은 최적화는 memory, cashing 효율이 쌓이게 된다
 	g_pImmediateContext->PSSetConstantBuffers(1, 1, &g_pLightCBuffer);
+
+	// HW2.4) Register hard coding variables to Constant Buffers
+	MtCBuffer mtb;
+	mtb.mtcAmbient = Vector3(0.1f, 0.1f, 0.1f);
+	mtb.shine = 10.f;
+	mtb.mtcDiffuse = Vector3(0.7f, 0.7f, 0.f);
+	mtb.mtcSpec = Vector3(0.2f, 0.f, 0.2f);
+	g_pImmediateContext->UpdateSubresource(g_pMtCBuffer, 0, nullptr, &mtb, 0, 0);
+	g_pImmediateContext->PSSetConstantBuffers(2, 1, &g_pMtCBuffer);
 
 	g_pImmediateContext->RSSetState(g_pRSState);
 	g_pImmediateContext->OMSetDepthStencilState(g_pDSState, 0);
@@ -845,8 +855,10 @@ void CleanupDevice()
 {
 	if (g_pImmediateContext) g_pImmediateContext->ClearState();
 
+	//HW2.4) Register hard coding variables to Constant Buffers
 	if (g_pTransformCBuffer) g_pTransformCBuffer->Release();
 	if (g_pLightCBuffer) g_pLightCBuffer->Release();
+	if (g_pMtCBuffer) g_pMtCBuffer->Release();
 	if (g_pIndexBuffer) g_pIndexBuffer->Release();
 	if (g_pVertexBuffer) g_pVertexBuffer->Release();
 	if (g_pVertexLayout) g_pVertexLayout->Release();
