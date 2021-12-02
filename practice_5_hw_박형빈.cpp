@@ -71,6 +71,7 @@ struct LightCBuffer
 {
 	Vector3 posLightCS;
 	int lightFlag;
+	//DirectX::PackedVector::XMUBYTEN4
 
 	Vector3 lightColor;
 	int dummy1;
@@ -621,10 +622,10 @@ HRESULT InitDevice()
 	{
 		// HW2.1) Replace Vertex Color Attribute 
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		 { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		 { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0}
-		//{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		//{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0}
+		//{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		//{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0}
+		{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0}
 	};
 	UINT numElements = ARRAYSIZE(layout);
 
@@ -653,25 +654,79 @@ HRESULT InitDevice()
 		return hr;
 
 #pragma endregion Create Shader
-
+	struct C {
+		char r : 8;
+		char g : 8;
+		char b : 8;
+		char a : 8;
+	};
 #pragma region Create a cube
 	struct CubeVertex
 	{
 		Vector3 Pos;
-		Vector4 Color;
+		C Color; // Vector4 -> 16byte니까 buffer밀림 
 		Vector3 Nor;
 	};
 
+	struct C c1;{
+		c1.r = 0;
+		c1.g = 0;
+		c1.b = 255;
+		c1.a = 255;
+	}
+	struct C c2; {
+		c2.r = 255;
+		c2.g = 255;
+		c2.b = 255;
+		c2.a = 255;
+	}
+	struct C c3; {
+		c3.r = 255;
+		c3.g = 0;
+		c3.b = 0;
+		c3.a = 255;
+	}
+	struct C c4; {
+		c4.r = 0;
+		c4.g = 0;
+		c4.b = 0;
+		c4.a = 255;
+	}
+	struct C c5; {
+		c5.r = 0;
+		c5.g = 255;
+		c5.b = 0;
+		c5.a = 255;
+	}
+	struct C c6; {
+		c6.r = 0;
+		c6.g = 255;
+		c6.b = 255;
+		c6.a = 255;
+	}
+	struct C c7; {
+		c7.r = 255;
+		c7.g = 0;
+		c7.b = 255;
+		c7.a = 255;
+	}
+	struct C c8; {
+		c8.r = 255;
+		c8.g = 255;
+		c8.b = 0;
+		c8.a = 255;
+	}
+
 	CubeVertex vertices[] =
 	{
-		{ Vector3(-0.5f, 0.5f, -0.5f), Vector4(0.0f, 0.0f, 1.0f, 1.0f), Vector3() },
-		{ Vector3(0.5f, 0.5f, -0.5f), Vector4(0.0f, 1.0f, 0.0f, 1.0f), Vector3() },
-		{ Vector3(0.5f, 0.5f, 0.5f), Vector4(0.0f, 1.0f, 1.0f, 1.0f), Vector3() },
-		{ Vector3(-0.5f, 0.5f, 0.5f), Vector4(1.0f, 0.0f, 0.0f, 1.0f), Vector3() },
-		{ Vector3(-0.5f, -0.5f, -0.5f), Vector4(1.0f, 0.0f, 1.0f, 1.0f), Vector3() },
-		{ Vector3(0.5f, -0.5f, -0.5f), Vector4(1.0f, 1.0f, 0.0f, 1.0f), Vector3() },
-		{ Vector3(0.5f, -0.5f, 0.5f), Vector4(1.0f, 1.0f, 1.0f, 1.0f), Vector3() },
-		{ Vector3(-0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector3() },
+		{ Vector3(-0.5f, 0.5f, -0.5f), c1, Vector3() },
+		{ Vector3(0.5f, 0.5f, -0.5f), c5, Vector3() },
+		{ Vector3(0.5f, 0.5f, 0.5f), c6, Vector3() },
+		{ Vector3(-0.5f, 0.5f, 0.5f), c3, Vector3() },
+		{ Vector3(-0.5f, -0.5f, -0.5f), c7, Vector3() },
+		{ Vector3(0.5f, -0.5f, -0.5f), c8, Vector3() },
+		{ Vector3(0.5f, -0.5f, 0.5f), c2, Vector3() },
+		{ Vector3(-0.5f, -0.5f, 0.5f), c4, Vector3() },
 	};
 	for (int i = 0; i < 8; i++)
 	{
