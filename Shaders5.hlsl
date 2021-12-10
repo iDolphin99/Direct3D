@@ -93,7 +93,7 @@ float4 PS(PS_INPUT input) : SV_Target
 
     // HW2.5) Add an option to the scene property : Paralle lighting or Point lighting
     if (lightFlag == 1) L = normalize(posLightCS - input.PosCS);
-    if (lightFlag == 2) L = normalize(float3(0,1,0));
+    if (lightFlag == 2) L = normalize(float3(0,-1,0));
 
     float3 colorOut = PhongLighting(L, N, R, V,
         mtcAmbient, mtcDiffuse, mtcSpec, shine,
