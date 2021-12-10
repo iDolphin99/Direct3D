@@ -50,18 +50,18 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Shaders2_ori.hlsl">
-      <Filter>소스 파일</Filter>
-    </FxCompile>
     <FxCompile Include="Shaders5_ori.hlsl">
       <Filter>소스 파일</Filter>
     </FxCompile>
     <FxCompile Include="Shaders5.hlsl">
       <Filter>소스 파일</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders_6_start.hlsl">
+      <Filter>소스 파일</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="practice_5_hw_박형빈.cpp">
+    <ClCompile Include="practice_6_start.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>

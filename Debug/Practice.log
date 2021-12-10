@@ -1,22 +1,3 @@
-﻿  practice_5_hw_박형빈.cpp
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(674,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(675,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(678,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(679,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(680,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(681,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(684,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(687,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(693,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(697,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(699,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(703,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(704,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(705,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(708,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(710,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(711,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(714,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(715,10): warning C4309: '=': 상수 값이 잘립니다.
-C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\practice_5_hw_박형빈.cpp(717,10): warning C4309: '=': 상수 값이 잘립니다.
-  Practice.vcxproj -> C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Debug\Practice.exe
+﻿  failed to open file: C:\Users\mtang\Desktop\SW\21. DirectX\Practice\Practice\Shaders5.hlsl
+  compilation failed; no code produced
+C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Microsoft\VC\v160\Microsoft.CppCommon.targets(1759,5): error MSB6006: "fxc.exe"이(가) 종료되었습니다(코드: 1).
