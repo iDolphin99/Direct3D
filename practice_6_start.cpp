@@ -1050,6 +1050,15 @@ HRESULT InitDevice()
 		g_pRSState, g_pDSState, sizeof(CubeVertex), sizeof(WORD), indices_cube,
 		g_mWorld_cube, Color(0.1f, 0.1f, 0.1f), Color(0.7f, 0.7f, 0), Color(0.2f, 0, 0.2f), 10.f);
 
+	// 가려져서 안그려져야 하는데 빛이 보이고 있음
+	// 객체와 객체 사이의 geometry interaction은 수행하고 있지 않음
+	// view 기준의 backface가 아니냐를 판정해서 specular term을 없애는 과제였음
+	// 그렇기에 local lighting을 잘 보여주는 예시가 된다 
+	// Diffuse term을 노란색으로 두지 않았는데 노란색으로 보임 -> shader code를 hard coding 했기 때문 -> object단위의 Constant buffe가 제대로 setting되어 있지 않음   
+	g_sceneObjs["CUBE_2"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader1,
+		g_pRSState, g_pDSState, sizeof(CubeVertex), sizeof(WORD), indices_cube,
+		Matrix::CreateScale(5.f) * Matrix::CreateTranslation(10.f,0,0), Color(0.1f, 0.1f, 0.1f), Color(0.f, 0.7f, 0.7f), Color(0.2f, 0, 0.2f), 10.f);
+
 	g_sceneObjs["SPHERE"] = MyObject(g_pVertexBuffer_sphere, g_pIndexBuffer_sphere, g_pIALayoutPNT, g_pVertexShaderPNT, g_pPixelShader2,
 		g_pRSState, g_pDSState, sizeof(SphereVertex), sizeof(UINT), indices_sphere,
 		g_mWorld_sphere, Color(1.f, 1.f, 1.f), Color(), Color(), 1.f);
