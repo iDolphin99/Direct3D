@@ -187,12 +187,10 @@
     <None Include="SimpleMath.inl" />
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Shaders2_ori.hlsl" />
-    <FxCompile Include="Shaders5.hlsl" />
-    <FxCompile Include="Shaders5_ori.hlsl" />
+    <ClCompile Include="practice_6_start.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="practice_5_hw_박형빈.cpp" />
+    <FxCompile Include="Shaders_6_start.hlsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
