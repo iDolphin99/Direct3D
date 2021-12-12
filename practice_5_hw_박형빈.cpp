@@ -82,9 +82,9 @@ struct MtCBuffer
 	float shine;
 
 	Vector3 mtcDiffuse;
-	float dummy2;
+	int dummy2;
 	Vector3 mtcSpec;
-	float dummy3;
+	int dummy3;
 };
 
 Matrix g_mWorld, g_mView, g_mProjection;

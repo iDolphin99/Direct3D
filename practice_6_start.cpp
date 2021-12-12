@@ -57,7 +57,23 @@ ID3D11DepthStencilState* g_pDSState = nullptr;
 ID3D11Buffer* g_pCB_Lights = nullptr;
 Vector3 g_pos_light;
 Vector3 g_pos_eye, g_pos_at, g_vec_up;
+
 struct MyObject {
+	// 여러 개의 object를 적용하는 코드 
+	// 지금까지 작성한 code에 이어서 rendering function을 호출하면 됨 
+	// 새롭게 생성한 모델을 rendering 다음에, rendering 다 한 다음에, 추가적으로 생성한 model을 GPU pl에 setting -> rendering 
+	// 이런식으로 반복함으로써 여러개의 object를 rendering 할 수 있음 
+	// 하지만 이런 방식은 구조를 복잡하게 만드므로 
+	// 1) scene에 공동으로 들어가는 parameter를 camera state / light source / view port(Init device에서 setting)로 정리
+	// camera state와 light source는 Constant buffer로 Scene parameter를 설정하는 Constant buffer로 설정
+	// 2) 나머지 resource들에 대해서 
+	// 각각의 object의 geometry를 저장하는 buffer, index를 저장하는 buffer
+	// object가 OS -> WS로 배치되게 하는 world matrix를 저장하는 Material properties를 저장하는 Constant buffer를 object별로 지정 
+	// object가 삼각형으로 그려지는지, index buffer의 사용 유무, 해당 vertex buffer가 어떤 구조로, attribute를 가지는지(input assembly layer - Noraml, texture...)
+	// 해당 object를 VS 와 PS에서 그려주는 shader를 obejct의 parameter로 둠
+	// object를 그리기 위한 rasterizer / depth buffer setting 을 어떻게 할 것인지 저장하는 parameter를, resource를 object별로 저장
+	// 이보다 최적화된 코드를 작성할 수 있음 
+	// MyObject의 object 단위로 여러 parameter들, GPU에 할당할 resource parameter를 저장할 variable들을 저장함 
 public:
 	// resources //
 	ID3D11Buffer* pVBuffer;
@@ -79,6 +95,10 @@ public:
 		ZeroMemory(this, sizeof(MyObject));
 	}
 
+	// 생성자에서 여기에 들어갈 필수정보들을 입력받게 해두었음 
+	// 생성자의 input parameter에 대해서 그대로 struct의 parameter에 할당하게 했음 
+	// struct 안에서 index, vertex buffer, VS, PS 이런 것들을 생성하게 만들 수 있음 
+	// 그러나 그런 부분들은 지난 시간동안 만들었던 resource를 그대로 할당받아 사용할 수 있게끔 만들었음 
 	MyObject(
 		const ID3D11Buffer* pVBuffer_, const ID3D11Buffer* pIBuffer_,
 		const ID3D11InputLayout* pIALayer_, const ID3D11VertexShader* pVShader_, const ID3D11PixelShader* pPShader_,
@@ -107,32 +127,46 @@ public:
 		bd.ByteWidth = sizeof(Matrix) + 4 * 4; // MUST BE times of 16
 		bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 		bd.CPUAccessFlags = 0;
-		HRESULT hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &pConstBuffer);
+		// 이 struct 구조 안에서 다음과 같이 obejct 별 Constant buffer(Wmatrix, material properties 저장하는)를 생성하게 해두었음  
+		HRESULT hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &pConstBuffer); 
 		if (FAILED(hr))
 			MessageBoxA(NULL, "Constant Buffer of A MODEL ERROR", "ERROR", MB_OK);
 	}
 
+	// 해당 struct가 아래의 function이 호출 되면 
+	// 지금 할당되어 있는 object 정보들을 가지고 Constant buffer를 update하게 했음 
 	void UpdateConstanceBuffer() {
 		struct ModelConst {
 			Matrix mModel;
-			DirectX::PackedVector::XMUBYTEN4 mtAmbient, mtDiffuse, mtSpec;
-			float shininess;
+			DirectX::PackedVector::XMUBYTEN4 mtAmbient, mtDiffuse, mtSpec; // 4 4 4 
+			float shininess; // 4 => 16 
 		};
+		// 현재 setting 되어있는 world matrix, material properties를 다음과 같이 sttructure에 넣고 이 structure를 가지고 해당 constantbuffer를 update해줌 
 		ModelConst data = { mModel.Transpose() , mtAmbient.RGBA() , mtDiffuse.RGBA() , mtSpec.RGBA() , shininess };
 		g_pImmediateContext->UpdateSubresource(pConstBuffer, 0, nullptr, &data, 0, 0);
 	}
+
+	// Getter로 해당 Constant buffer를 얻어오게 함 
+	// get한 constant buffer를 가지고 Device context가 VS 또는 PS에 setting 하게 함 
 	ID3D11Buffer* GetConstantBuffer() {
 		return pConstBuffer;
 	}
+
+	// 이 구조차 안에서 buffer를 생성했기 때문에 구조체가 소멸할 때, 소멸하기 전에 반드시 delete function이 호출되게 해야 함 -> Release() 
 	void Delete() {
 		if (pConstBuffer) pConstBuffer->Release();
 	}
 
 private:
 	// local resource //
+	// 추가로 struct 안에서 constant buffer를 생성하게 했음 
 	ID3D11Buffer* pConstBuffer; // transform, material colors...
 };
 
+// map standard library 
+// what is map? -> dictionary, index에 대해서 value가 들어감
+// std::string -> index, key // Myobject -> value 
+// MyObject를 구별하는 식별자로 string을 사용할 것임 
 std::map<std::string, MyObject> g_sceneObjs;
 
 // http://www.songho.ca/opengl/gl_sphere.html
@@ -254,11 +288,11 @@ struct CB_Object
 
 struct CB_Lights
 {
-	Vector3 posLight;
-	DirectX::PackedVector::XMUBYTEN4 lightColor; // int
+	Vector3 posLight;							 // light position 
+	DirectX::PackedVector::XMUBYTEN4 lightColor; // int, light color는 int형 4byte로 두고 각각의 byte에 RGBA값을 넣음 
 
-	Vector3 dirLight;
-	int lightFlag;
+	Vector3 dirLight;							 // directional light의 direction을 저장하는 vector 
+	int lightFlag;								 // light을 point? directional? 쓸지 shader에서 판정하기 위한 flag
 };
 
 struct CubeVertex
@@ -809,6 +843,7 @@ HRESULT InitDevice()
 	int indices_cube = 0, indices_sphere = 0;
 #pragma region Create a cube
 	{
+		// Cube -> position, color, normal 정보가 들어감 
 		CubeVertex vertices[] =
 		{
 			{ Vector3(-0.5f, 0.5f, -0.5f), Vector4(0.0f, 0.0f, 1.0f, 1.0f), Vector3() },
@@ -820,6 +855,7 @@ HRESULT InitDevice()
 			{ Vector3(0.5f, -0.5f, 0.5f), Vector4(1.0f, 1.0f, 1.0f, 1.0f), Vector3() },
 			{ Vector3(-0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector3() },
 		};
+		// normal 값을 채우는 logic 
 		for (int i = 0; i < 8; i++)
 		{
 			CubeVertex& vtx = vertices[i];
@@ -840,6 +876,7 @@ HRESULT InitDevice()
 			return hr;
 
 		// Create index buffer
+		// 8개의 vertex의 index를 가지고 triangle을 그림으로써 최종적으로 cube를 그림 
 		WORD indices[] =
 		{
 			3,1,0,
@@ -871,14 +908,25 @@ HRESULT InitDevice()
 		if (FAILED(hr))
 			return hr;
 	}
-
 #pragma endregion
 
 #pragma region Create a sphere
 	{
+		// 위도와 경도에 해당하는 stacks와 sectors로 spher를 parameter화 해서 이것으로부터 3차원 model을 생성해주는 code 
+		// OpenGL Sphere
+
+		// Vertex 생성, vertex 마다 position, noraml, texture coordinate을 가짐
+		// texture coordinate는 sphere object가 flatten 되었을 때 사각형 map이 가로 세로가 각각 0~1로 mapping된다 했을 때 
+		// 각 vertex point에서 해당 texture에 mapping되는 coordinate을 저장함
+		// vector : 동적으로 추가할 수 있는 array, <float> : 기본 타입이 float, vertex와 noraml은 float 3개로 되는 것임 
+		// 만약 vertex가 10개라면 vector array안에 들어가는 element들은 30개가 됨 
+		// 그러나 texcoord는 u,v 값, 2차원 값이기 때문에 10개의 vertex에 대해서 20개의 element를 갖게 됨
+		// stackcount, sectorcount -> 얼마나 정밀하게 stack, sector를 설정할지에 대한 parameter 
+		// 이 parameter에 대해서 sphere를 위한 vertex buffer, index buffer를 생성하는 코드를 추가함 
 		std::vector<float> position, normal, texcoord;
 		const int stackCount = 100, sectorCount = 100;
-		GenerateSphere(0.5f, sectorCount, stackCount, position, normal, texcoord);
+		
+		GenerateSphere(0.5f, sectorCount, stackCount, position, normal, texcoord); // 반지름이 0.5f인 구 
 		std::cout << "# of position: " << position.size() / 3 << ", # of normal: " << normal.size() / 3 << ", # of texcoord: "
 			<< texcoord.size() / 2 << std::endl;
 
@@ -904,10 +952,13 @@ HRESULT InitDevice()
 
 		D3D11_SUBRESOURCE_DATA InitData = {};
 		InitData.pSysMem = &verticesSphere[0];
-		hr = g_pd3dDevice->CreateBuffer(&bd_sphere, &InitData, &g_pVertexBuffer_sphere);
+		hr = g_pd3dDevice->CreateBuffer(&bd_sphere, &InitData, &g_pVertexBuffer_sphere); // sphere를 위한 vertex buffer, index buffer를 생성하는 코드를 추가함
 		if (FAILED(hr))
 			return hr;
 
+		// 삼각형을 그릴때는 indexing을 해서 그리기 때문에 index buffer를 설정하게 됨 
+		// index buffer를 생성하는 code 
+		// 만약 생성하는 삼각형이 10개이면 index buffer의 element의 개수는 30개가 됨 
 		std::vector<UINT> sphereIndices;
 		GenerateIndicesSphere(sectorCount, stackCount, sphereIndices);
 
@@ -918,19 +969,22 @@ HRESULT InitDevice()
 		bd_sphere.BindFlags = D3D11_BIND_INDEX_BUFFER;
 		bd_sphere.CPUAccessFlags = 0;
 		InitData.pSysMem = &sphereIndices[0];
-		hr = g_pd3dDevice->CreateBuffer(&bd_sphere, &InitData, &g_pIndexBuffer_sphere);
+		hr = g_pd3dDevice->CreateBuffer(&bd_sphere, &InitData, &g_pIndexBuffer_sphere); // sphere를 위한 vertex buffer, index buffer를 생성하는 코드를 추가함
 		if (FAILED(hr))
 			return hr;
 	}
 #pragma endregion Create a sphere
 
 	// Create the constant buffer
+	// scene에 공통으로 사용되는 transform matrix를 저장하는 constant buffer 
+	// -> object 단위로 transform되는 world Matrix / scene단위로 (개별 camear단위로) 설정해야 하는 transform matrix : camera matrix, projection matrix
+	// light resource 를 저장하는 constant buffer 
 	D3D11_BUFFER_DESC bdCB = {};
 	bdCB.Usage = D3D11_USAGE_DEFAULT;
-	bdCB.ByteWidth = sizeof(CB_TransformScene);
+	bdCB.ByteWidth = sizeof(CB_TransformScene);							   // sturcture를 저장할 수 있을 정도의 크기로 buffer를 생성 
 	bdCB.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	bdCB.CPUAccessFlags = 0;
-	hr = g_pd3dDevice->CreateBuffer(&bdCB, nullptr, &g_pCB_TransformWorld);
+	hr = g_pd3dDevice->CreateBuffer(&bdCB, nullptr, &g_pCB_TransformWorld); // 생성된 buffer는 rendering function에서 해당 Cbuffer를 update 함 
 	if (FAILED(hr))
 		return hr;
 
@@ -946,7 +1000,9 @@ HRESULT InitDevice()
 	g_pos_light = Vector3(0, 8, 0);
 
 	g_mWorld_cube = Matrix::CreateScale(10.f);
-	g_mWorld_sphere = Matrix::CreateScale(2.f) * Matrix::CreateTranslation(g_pos_light);
+	// OS에서는 직경이 1인 sphere가 원점을 중심으로 modeling 되어 있음 -> 이 구를 직경이 2인 구로 두고 이 구를 point lihgt position에 둠  
+	// DirectX math는 row major -> transform이 왼쪽에서 오른쪽으로 진행 -> scaling 먼저 하고(구가 원점을 중심으로 2배) translation을 함(light position에)
+	g_mWorld_sphere = Matrix::CreateScale(2.f) * Matrix::CreateTranslation(g_pos_light); 
 
 	g_pos_eye = Vector3(0.0f, 0.0f, 20.0f);
 	g_pos_at = Vector3(0.0f, 0.0f, 0.0f);
@@ -985,9 +1041,23 @@ HRESULT InitDevice()
 	hr = g_pd3dDevice->CreateDepthStencilState(&descDepthStencil, &g_pDSState);
 #pragma endregion
 
+	// setting 된 것을 가지고 map을 전역변수로 만들었었음 
+	// "CUBE"라는 이름으로 object에 들어가는 정보들을 setting함 -> GPU resource들은 전역변수로 빼서 관리하고 있기 때문에 MyObject에서 이를 삭제하거나 그러지 않음 
+	// 그러나 밑에 처럼 한 이유는 g_pVertexBuffer_cube를 여러개 만들 수 있음 
+	// 개별 object는(MyObject) object 단위의 constant buffer가 있고, structure가 생성됨과 동시에 생성자 안에서 constant buffer가 생성됨 
+	// object를 rendering할 때 사용되는 W_transform, material properties를 저장하는 Constant buffer를 MyObject에서 생성되게 했음 
 	g_sceneObjs["CUBE"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader1,
 		g_pRSState, g_pDSState, sizeof(CubeVertex), sizeof(WORD), indices_cube,
 		g_mWorld_cube, Color(0.1f, 0.1f, 0.1f), Color(0.7f, 0.7f, 0), Color(0.2f, 0, 0.2f), 10.f);
+
+	// 가려져서 안그려져야 하는데 빛이 보이고 있음
+	// 객체와 객체 사이의 geometry interaction은 수행하고 있지 않음
+	// view 기준의 backface가 아니냐를 판정해서 specular term을 없애는 과제였음
+	// 그렇기에 local lighting을 잘 보여주는 예시가 된다 
+	// Diffuse term을 노란색으로 두지 않았는데 노란색으로 보임 -> shader code를 hard coding 했기 때문 -> object단위의 Constant buffe가 제대로 setting되어 있지 않음   
+	g_sceneObjs["CUBE_2"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader1,
+		g_pRSState, g_pDSState, sizeof(CubeVertex), sizeof(WORD), indices_cube,
+		Matrix::CreateScale(5.f) * Matrix::CreateTranslation(10.f,0,0), Color(0.1f, 0.1f, 0.1f), Color(0.f, 0.7f, 0.7f), Color(0.2f, 0, 0.2f), 10.f);
 
 	g_sceneObjs["SPHERE"] = MyObject(g_pVertexBuffer_sphere, g_pIndexBuffer_sphere, g_pIALayoutPNT, g_pVertexShaderPNT, g_pPixelShader2,
 		g_pRSState, g_pDSState, sizeof(SphereVertex), sizeof(UINT), indices_sphere,
@@ -1002,11 +1072,14 @@ HRESULT InitDevice()
 void Render()
 {
 #pragma region Common Scene (World)
+	// view, projection transform은 VS에서만 쓰일 것이기 때문에 VS에만 setting 
+	// light source는 goraud shading을 사용하지 않기 때문에(phong shading을 쓰기 때문에) VS에는 setting할 필요 없음, PS에만 setting -> 최적화하기 위해서 
+	// scene에 공통으로 적용될 Constant buffer를 다음코드들에서 setting 함 
 	CB_TransformScene cbTransformScene;
 	cbTransformScene.mView = g_mView.Transpose();
 	cbTransformScene.mProjection = g_mProjection.Transpose();
 	g_pImmediateContext->UpdateSubresource(g_pCB_TransformWorld, 0, nullptr, &cbTransformScene, 0, 0);
-	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pCB_TransformWorld);
+	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pCB_TransformWorld);							   // update된 Cbuffer를 device context가 개별 shader에 setting 해줌 		
 
 	CB_Lights cbLight;
 	cbLight.posLight = Vector3::Transform(g_pos_light, g_mView);
@@ -1015,20 +1088,30 @@ void Render()
 	cbLight.lightColor = Color(1, 1, 0, 1).RGBA();
 	cbLight.lightFlag = 0;
 	g_pImmediateContext->UpdateSubresource(g_pCB_Lights, 0, nullptr, &cbLight, 0, 0);
-	g_pImmediateContext->VSSetConstantBuffers(2, 1, &g_pCB_Lights);
+	//g_pImmediateContext->VSSetConstantBuffers(2, 1, &g_pCB_Lights); 굉장히 작은 resource이지만 VS 에서는 해당 정보를 사용하지 않기 때문에 낭비하지말고! 
 	g_pImmediateContext->PSSetConstantBuffers(2, 1, &g_pCB_Lights);
 
 	// Just clear the backbuffer
+	// draw buffer가(main rendering function) 호출되기 전에 buffer clear 
+	// 이때 clear 할 buffer는 RGBA가 저장되어 있는 render target buffer, depth test를 수행할 depth buffer
 	g_pImmediateContext->ClearRenderTargetView(g_pRenderTargetView, DirectX::Colors::MidnightBlue);
 
 	// Clear the depth buffer to 1.0 (max depth) 
+	// 이때 depth buffer는 최대 dapth value 1로 초기화 함으로써 1보다 가까운 projection space에서의 depth값을 갖는 pixel이 그려지게 할 것임 
 	g_pImmediateContext->ClearDepthStencilView(g_pDepthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0);
+
 #pragma endregion Common Scene (World)
+	// C에서의 for-each 구문 
+	// g_sceneObject : map, 두 개의 key-value pair 가 들어가 있음, key: string, value: MyObject 
+	// auto -> std::pair<std::string, MyObject> -> 명시적으로 element를 갖고 있는, 어떤 typoe의 변수를 쓴다를 auto가 code의 흐름에 맞춰서 명시적인 것으로 compile time에 대체해줌 (편의성)
 
 	for (auto& pair : g_sceneObjs)
 	{
 		//if (pair.first == "CUBE") continue;
+		// pair.first = key, pair.second = value, MyObject, &ojb -> MyObject의 reference를 가져오도록 함, 전체 copy가 아닌 reference 참조만 하는 것임  
+		// 그냥 obj로 하게 된다면 MyObject가 가지고 있는 모든 parameter value를 모두 copy하기 때문에 value에 대한 copy overhead가 생김, 물론 성능에는 큰 영향을 끼치진 않음 
 		MyObject& obj = pair.second;
+
 #pragma region For Each Object
 		// Set vertex buffer
 		UINT stride = obj.vb_stride;
@@ -1036,29 +1119,41 @@ void Render()
 		g_pImmediateContext->IASetInputLayout(obj.pIALayer);
 		g_pImmediateContext->IASetVertexBuffers(0, 1, &obj.pVBuffer, &stride, &offset); // g_pVertexBuffer_sphere
 		// Set index buffer
-		switch (obj.ib_stride)
+		// index buffer의 stide, size를 MyObject의 variable로 추가, size에 따라서 input assembler의 index buffer의 size를 명시적으로 set함 
+		switch (obj.ib_stride)  
 		{
 		case 2:
-			g_pImmediateContext->IASetIndexBuffer(obj.pIBuffer, DXGI_FORMAT_R16_UINT, 0); break;
+			g_pImmediateContext->IASetIndexBuffer(obj.pIBuffer, DXGI_FORMAT_R16_UINT, 0); break; // cube model의 index buffer는 16bit unsigned int를 사용 
 		case 4:
-			g_pImmediateContext->IASetIndexBuffer(obj.pIBuffer, DXGI_FORMAT_R32_UINT, 0); break;
+			g_pImmediateContext->IASetIndexBuffer(obj.pIBuffer, DXGI_FORMAT_R32_UINT, 0); break; // sphere model은 index buffer로 32bit unsigned int 사용 -> 4byte unsigned int, 충분한 개수를 보장하기 위함
 		default:
 			break;
 		}
 		// Set primitive topology
 		g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
+		// object가 material properties와 Wmatrix를 따로 갖음 
+		// 그리고 경우에 따라서 Rendering 전에 다른 logic에서 Wmatrix, material properties가 바뀌는 경우가 존재할 수 있기 때문에 바뀌는 경우 바뀐 값이 적용되기 위해 UpdateConstantBuffer 호출 
 		obj.UpdateConstanceBuffer();
 		ID3D11Buffer* pCBuffer = obj.GetConstantBuffer();
 		g_pImmediateContext->VSSetConstantBuffers(1, 1, &pCBuffer);
 
+		// model별로 RSS, DSS를 갖게 함 
 		g_pImmediateContext->RSSetState(obj.pRSState);
 		g_pImmediateContext->OMSetDepthStencilState(obj.pDSState, 0);
 
 		// Render a triangle
+		// object별로 VS, PS로 갖게 함
+		// 특히 VS는 cube, sphere model이 다른 input layer, Vertex attribute를 갖고 있음, position, normal, color, ~ texture~ 
+		// 그렇기 때문에 model마다 다르게 바뀌어야 함 
+		// PS는 같은 것을 사용할 수도 있음, 그렇지만 object 단위로 설정함 
 		g_pImmediateContext->VSSetShader(obj.pVShader, nullptr, 0);
 		g_pImmediateContext->PSSetShader(obj.pPShader, nullptr, 0);
 		
+		// 만약 index buffer가 설정되어 있다면 indexed function을 
+		// 그렇지 않으면 draw function을 사용 
+		// draw function을 쓸때는 vertex buffer의 element 개수를 적고, index buffer를 쓸 때는 index buffer의 element개수를 적음 
+		// 그래서 object 별로 다른 개수가 들어갈 수 있기 때문에 MyObject variable로 별도로 저장해 사용함 
 		if (obj.pIBuffer)
 			g_pImmediateContext->DrawIndexed(obj.drawCount, 0, 0);
 		else 
@@ -1075,9 +1170,14 @@ void Render()
 //--------------------------------------------------------------------------------------
 void CleanupDevice()
 {
+	// map 에서 constant buffer를 생성하고 있음 
+	// 그래서 그냥 종료하면, map이 소멸하게 되면 delete function이 자동으로 호출되지 않음 
+	// 그렇기 때문에 별도로 다음과 같이 map에 들어있는 모든 element에 대해서 MyObject의 Delete를 호출함
+	// 다 호출한 후 resource를 release 한 후 해당 map을 clear 함 
 	for (auto& obj : g_sceneObjs) obj.second.Delete();
 	g_sceneObjs.clear(); 
 
+	// global variable로 GPU resource에 할당된 것들을 모두 Release 
 	if (g_pImmediateContext) g_pImmediateContext->ClearState();
 
 	if (g_pCB_TransformWorld) g_pCB_TransformWorld->Release();
