@@ -1,8 +1,39 @@
 // practice_1.cpp : Defines the entry point for the application.
-//
+// shading, lighting을 일반적인 3D model에 대해서 적용하는 것을 시도해보자 
+// cube와 sphere에 대해서 modeling 했음 
+// parametric formular로부터 위도와 경도를 계산하고 그것으로부터 계산된 Vertex position 그리고 이 position을 잇는 삼각형으로 이루어진 구, 
+// 구는 위도와 경도 정보를 갖고 있는 texture coord 를 갖는 sphere가 된다 
+// 이제 이 model을 한 scene에 여러개를 두어서 rendering하는 것 까지 template code다 
+// 새로운 3D model을 읽어드려서 Rendering해보자 
+// 3D model을 저장하는 여러가지 표준 format중 가장 직관적이고 많이 쓰는 format -> stl 
+// stl format? STereoLithography
+// stl은 binary로 저장될 수 있고, text 파일로도 저장될 수 있음 -> 우리는 binary, 용량이 클 경우 string으로 저장되어 있기 때문에 text 파일임 
+// text 파일은 하나의 model에 대해서 facet(하나의 triangle)에 대해 noraml vector가 일일히 정의되어 있다 -> 수많은 facet이 적혀져 있는 것 
+
+// 3d model을 읽어오기 전에 주의할 점 
+// vertex position 은 3개가 있지만 normal은 face단위로 있기 때문에 vertex 3개가 같은 normal을 갖게 해서 rendering 해도 됨 
+// 하지만 그 경우에는 noraml 값이 vertex에 동일한 attribute가 들어가면 memory 낭비
+// face 단위로, triangle 단위로 저장되게 한 후 이 buffer를 shader에서 읽어들일 수 있게 하면 좋음 
+// 물론 vertex의 attribute로 들어가게 되면 g_p에서 Input-Assembler stage-> Vertex shader로 streaming할 때 자동으로 normal 값을 읽어들일 수 있는 장점이 있긴 함, 하지만 GPU memory 낭비 발생 
+// 물론 vertex 단위로 normal이 다르면 Vertex attribute vector로 들어가는 것이 좋다!
+
+// sphere model을 만드는 것을 보면 u, v값이 펼쳐진 2D texture에 mapping되는 값임 (지구본 생각했을때) 
+// texture mapping application -> environment map
+// environment map을 cube를 통해서 구현하고 model에 reflection, refraction을 적용하는 실습을 하겠음
+
+// 지난 실습에서 코딩한 내용은 Phonglighting까지 되고 있으며 
+// Vertex의 attribute로 Cube에 Normal을 넣고 있었지만 이제는 Face단위로 Normal을 정의해서 shader resource로 PS에 넣고
+// PS에서 System value로 (Semantics) PrimitiveID를 읽어올 수 있기 때문에 해당 value로부터 Normal Buffer를 Indexing해서 그 Normal Buffer를 가지고 Lighting 한 것 
+// 즉, 기존에는 4개의 Vertex buffer가 각자 대각선 방향의 Normal이 있었음 
+// 이제는 한 Face에 두 개의 삼각형이 있는데 두 삼각형이 같은 방향의 Normal (+y, -y...)을 가지게 됨 
+// 그리고 이 Normal에 대해서 Lighting을 하기 때문에 예전에 Lighting 한 것 과는 다르게 우리가 알고 있는 친숙한 Lighting이 가능하다 
+// STL model -> Standard format을 read/write 하는 function은 google, github을 통해서 얻을 수 있음 
+// PrimitiveID를 통해 Normal을 가져오는.. 과정에서 시행착오를 거쳤죠..
 
 #include "framework.h"
 #include "Practice.h"
+#include "stl_reader.h"
+#include "stb_image.h"
 
 #include <windowsx.h>
 #include <stdio.h>
@@ -36,17 +67,29 @@ ID3D11DeviceContext* g_pImmediateContext = nullptr;
 IDXGISwapChain* g_pSwapChain = nullptr;
 ID3D11RenderTargetView* g_pRenderTargetView = nullptr;
 
+// 나중에 map 으로 처리하는 방법을 구현해보세요! 
 ID3D11VertexShader* g_pVertexShaderPCN = nullptr;
 ID3D11VertexShader* g_pVertexShaderPNT = nullptr;
+ID3D11VertexShader* g_pVertexShaderP = nullptr;
 ID3D11PixelShader* g_pPixelShader1 = nullptr;
 ID3D11PixelShader* g_pPixelShader2 = nullptr;
 ID3D11InputLayout* g_pIALayoutPCN = nullptr;
 ID3D11InputLayout* g_pIALayoutPNT = nullptr;
+ID3D11InputLayout* g_pIALayoutP = nullptr;
 ID3D11Buffer* g_pVertexBuffer_cube = nullptr;
+ID3D11Buffer* g_pNormalBuffer_cube = nullptr;
+ID3D11ShaderResourceView* g_pSRV_cube = nullptr;
+ID3D11Buffer* g_pVertexBuffer_stl = nullptr;
+ID3D11Buffer* g_pNormalBuffer_stl = nullptr;
+ID3D11ShaderResourceView* g_pSRV_stl = nullptr;
 ID3D11Buffer* g_pVertexBuffer_sphere = nullptr;
 ID3D11Buffer* g_pIndexBuffer_cube = nullptr;
+ID3D11Buffer* g_pIndexBuffer_stl = nullptr;
 ID3D11Buffer* g_pIndexBuffer_sphere = nullptr;
 ID3D11Buffer* g_pCB_TransformWorld = nullptr;
+
+ID3D11Texture2D* g_texEnvMap = nullptr;
+ID3D11ShaderResourceView* g_tSRVEnvMap = nullptr;
 
 ID3D11Texture2D* g_pDepthStencil = nullptr;
 ID3D11DepthStencilView* g_pDepthStencilView = nullptr;
@@ -78,6 +121,7 @@ public:
 	// resources //
 	ID3D11Buffer* pVBuffer;
 	ID3D11Buffer* pIBuffer;
+	ID3D11ShaderResourceView* pSRViewNormal; // noraml buffer를 가르키는 veiw를 통해서 indexing을 하기 때문에 이거을 MyObject structure의 memeber variable로 할당되어야 한다 
 	ID3D11InputLayout* pIALayer;
 	ID3D11VertexShader* pVShader;
 	ID3D11PixelShader* pPShader;
@@ -100,7 +144,7 @@ public:
 	// struct 안에서 index, vertex buffer, VS, PS 이런 것들을 생성하게 만들 수 있음 
 	// 그러나 그런 부분들은 지난 시간동안 만들었던 resource를 그대로 할당받아 사용할 수 있게끔 만들었음 
 	MyObject(
-		const ID3D11Buffer* pVBuffer_, const ID3D11Buffer* pIBuffer_,
+		const ID3D11Buffer* pVBuffer_, const ID3D11Buffer* pIBuffer_, const ID3D11ShaderResourceView* pSRViewNormal_, // 구조체에 parameter를 입려갛는 사용자 입장에서는 const는 input parameter이고, 해당 함수 내에서 변하지 않는 parameter임을 표현함 
 		const ID3D11InputLayout* pIALayer_, const ID3D11VertexShader* pVShader_, const ID3D11PixelShader* pPShader_,
 		const ID3D11RasterizerState* pRSState_, const ID3D11DepthStencilState* pDSState_,
 		const UINT vb_stride_, const UINT ib_stride_, const int drawCount_, const Matrix &mModel_,
@@ -112,6 +156,7 @@ public:
 		pPShader = (ID3D11PixelShader*)pPShader_;
 		pRSState = (ID3D11RasterizerState*)pRSState_;
 		pDSState = (ID3D11DepthStencilState*)pDSState_;
+		pSRViewNormal = (ID3D11ShaderResourceView*)pSRViewNormal_; // const 썼기 때문에 casting 해줘야 함 
 		vb_stride = vb_stride_;
 		ib_stride = ib_stride_;
 		drawCount = drawCount_;
@@ -628,7 +673,7 @@ HRESULT Recompile(bool generateIALayout)
 {
 	HRESULT hr = S_OK;
 	// Compile the vertex shader
-	ID3DBlob *pVSBlobPCN = nullptr, *pVSBlobPNT = nullptr;
+	ID3DBlob *pVSBlobPCN = nullptr, *pVSBlobPNT = nullptr, *pVSBlobP = nullptr;
 	
 	auto CreateShader = [](const std::string& shaderName, const std::string& shaderProfile, ID3DBlob **ppShaderBlob,
 		ID3D11DeviceChild **ppShader)
@@ -660,6 +705,7 @@ HRESULT Recompile(bool generateIALayout)
 
 	hr |= CreateShader("VS_PCN", "vs_4_0", &pVSBlobPCN, (ID3D11DeviceChild**)&g_pVertexShaderPCN);
 	hr |= CreateShader("VS_PNT", "vs_4_0", &pVSBlobPNT, (ID3D11DeviceChild**)&g_pVertexShaderPNT);
+	hr |= CreateShader("VS_P", "vs_4_0", &pVSBlobP, (ID3D11DeviceChild**)&g_pVertexShaderP);
 
 	if (generateIALayout && SUCCEEDED(hr)) {
 		// Define the input layout
@@ -683,10 +729,20 @@ HRESULT Recompile(bool generateIALayout)
 		numElements = ARRAYSIZE(layout_PNT);
 		// Create the input layout
 		hr |= g_pd3dDevice->CreateInputLayout(layout_PNT, numElements, pVSBlobPNT->GetBufferPointer(), pVSBlobPNT->GetBufferSize(), &g_pIALayoutPNT);
+
+		// Define the input layout
+		D3D11_INPUT_ELEMENT_DESC layout_P[] =
+		{
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		};
+		numElements = ARRAYSIZE(layout_P);
+		// Create the input layout
+		hr |= g_pd3dDevice->CreateInputLayout(layout_P, numElements, pVSBlobP->GetBufferPointer(), pVSBlobP->GetBufferSize(), &g_pIALayoutP);
 	}
 
 	if (pVSBlobPCN) pVSBlobPCN->Release();
 	if (pVSBlobPNT) pVSBlobPNT->Release();
+	if (pVSBlobP) pVSBlobP->Release();     // reference count가 counting 되는 resource에 대해서는 다 쓰고 나면 무조건 Release! 
 	
 	ID3DBlob *pPSBlob1 = nullptr, *pPSBlob2 = nullptr;
 	hr |= CreateShader("PS1", "ps_4_0", &pPSBlob1, (ID3D11DeviceChild**)&g_pPixelShader1);
@@ -840,7 +896,7 @@ HRESULT InitDevice()
 #pragma endregion Create Shader
 
 
-	int indices_cube = 0, indices_sphere = 0;
+	int indices_cube = 0, indices_stl = 0, indices_sphere = 0;
 #pragma region Create a cube
 	{
 		// Cube -> position, color, normal 정보가 들어감 
@@ -856,6 +912,12 @@ HRESULT InitDevice()
 			{ Vector3(-0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector3() },
 		};
 		// normal 값을 채우는 logic 
+		// shader code -> semantic : application level에서 어떤 attirbute 정보를 줄 수 있고, shader 내부에서 g_p 통해서 어떤 정보를 얻을 수 있는지에 대해 명시한 string -> semantics 
+		// 별도로 만든 noraml buffer에 대해, face에 순서대로 들어가게 해야함 
+		// noraml 정보를 array로 만들어서 array index가 2인 noraml은 ~face에 해당하는 noraml로 정의할 수 있다 
+		// 예를 들어서 VS에서 세 개의 점들이 들어오는데 이 점이 어떤 face에서 들어왔는지를 알 수 있는 정보가 필요함 
+		// 그리고 이에 대해서 semantics에서는 해당 정보를 주는 것이 있음 -> SV_PrimitiveID 
+
 		for (int i = 0; i < 8; i++)
 		{
 			CubeVertex& vtx = vertices[i];
@@ -877,28 +939,29 @@ HRESULT InitDevice()
 
 		// Create index buffer
 		// 8개의 vertex의 index를 가지고 triangle을 그림으로써 최종적으로 cube를 그림 
+		// Vertex buffer의 index값 
 		WORD indices[] =
 		{
-			3,1,0,
-			2,1,3,
+			3,1,0,  // 두 개의 삼각형 -> 하나의 face 
+			2,1,3,  // +y
 
 			0,5,4,
-			1,5,0,
+			1,5,0,  // -z
 
 			3,4,7,
-			0,4,3,
+			0,4,3,  // -x
 
 			1,6,5,
-			2,6,1,
+			2,6,1,  // +x
 
 			2,7,6,
-			3,7,2,
+			3,7,2,  // +Z
 
 			6,4,5,
-			7,4,6, 
+			7,4,6,  // -y
 		};
 		indices_cube = ARRAYSIZE(indices);
-		
+
 		bd.Usage = D3D11_USAGE_DEFAULT;
 		bd.ByteWidth = sizeof(WORD) * indices_cube;        // 36 vertices needed for 12 triangles in a triangle list
 		bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
@@ -907,8 +970,112 @@ HRESULT InitDevice()
 		hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pIndexBuffer_cube);
 		if (FAILED(hr))
 			return hr;
+
+		// +y, -z, -x, +x, +z, -y
+		// face 단위 Normal vector 만들기 
+		// bd (description) -> ByteWidth, BindFlag 수정 
+		// InitData 수정해서 buffer 생성 
+		// 해당 Normal 정보는 OS에서 정의 
+		Vector3 cubeFaceNormlas[] = {
+			// 두 개의 삼각형이 하나의 normal을 공유하기 때문에 두 삼각형의 normal을 맞춰주는 방식으로 코딩합니다 
+			Vector3(0, 1.f, 0), Vector3(0, 1.0f, 0),
+			Vector3(0, 0, -1.f), Vector3(0, 0, -1.f),
+			Vector3(-1.f, 0, 0), Vector3(-1.f, 0, 0),
+			Vector3(1.f, 0, 0), Vector3(1.f, 0, 0),
+			Vector3(0, 0, 1.f), Vector3(0, 0, 1.f),
+			Vector3(0, -1.f, 0), Vector3(0, -1.f, 0),
+		};
+
+		bd.ByteWidth = sizeof(Vector3) * 6;
+		bd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+		InitData.pSysMem = cubeFaceNormlas;
+		hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pNormalBuffer_cube);
+		if (FAILED(hr))
+			return hr;
+
+		// 중요한 것은 다른 buffer resource와 다르게 shader resource들은 shader에 해당 resource를 set 하기 위해서 View라는 interface를 사용함 (외워) 
+		// 해당 shader resource를 바로 shader에 set이 아닌 shader를 가르키는 view라는 interface를 먼저 만들어야 함 -> syntax 
+		D3D11_SHADER_RESOURCE_VIEW_DESC dcSrv = {};
+		dcSrv.Format = DXGI_FORMAT::DXGI_FORMAT_R32G32B32_FLOAT; // vector3 -> directx format 에서는 r32f32b32 -> 32bit 3channel float으로 format 작성 
+		dcSrv.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;		 // view가 가르키는 resource가 어떤 resource다를 가르킴 -> 이 shader resource view description이 비단 buffer뿐만 아니라 제 3의 resource들을 가르키는 view일수도 있고 해당 resource에 대해서 서로 다른 desc를 갖게 되는데 이를 BUFFEREX라고 함, BUFFER EXTENSION DESC  
+		dcSrv.BufferEx.FirstElement = 0;
+		dcSrv.BufferEx.NumElements = 6;
+		hr = g_pd3dDevice->CreateShaderResourceView(g_pNormalBuffer_cube, &dcSrv, &g_pSRV_cube);
+		if (FAILED(hr))
+			return hr;
+		// 이렇게 생성된 shader resource view는 normal buffer를 directly set하지 않음 
+		// noraml buffer를 가르키는 veiw를 통해서 indexing을 하기 때문에 이거을 MyObject structure의 memeber variable로 할당되어야 한다 
 	}
 #pragma endregion
+
+#pragma region Load a STL
+	{
+		// 값을 읽어오는 interface, 별도로 interface를 통해서 별도의 struct에 copy하는 것이 아니라 저장되어 있는 struct를 directly하게 접근하는 방법을 사용하겠음 
+		// 우리는 vector3를 쓰고 있는데 vector3는 float이 3개짜리 array랑 똑같이 memory에 저장되어 있음 
+		// STL은 vertex의 position 정보만 넣는 것으로 하겠음 
+		// 즉, input assembly에 vertex buffer만 들어가게 함, index buffer는 쓰지 않겠음 
+		// 즉, STL용 vertex shader를 별도로 만들겠다는 의미 
+
+		// memory에 할당되어 있는 GPU를 넘겨주기 위해서이기 때문에.. 
+		stl_reader::StlMesh <float, unsigned int> mesh("Armadillo2.stl");
+		const float* raw_coords = mesh.raw_coords();    // element들을 나타냄 
+		// Camera position을 정의해야 함, Armadildo의 bounding box를 확인해야 함 
+		/*const Vector3* raw3_coords = (const Vector3 *)raw_coords;
+		Vector3 minPos(FLT_MAX), maxPos(-FLT_MAX);
+		for (int i = 0; i < mesh.num_vrts(); i++) {
+			minPos.x = min(minPos.x, raw_coords[i].x);
+			minPos.x = min(minPos.x, raw_coords[i].y);
+			minPos.x = min(minPos.x, raw_coords[i].z);
+
+			minPos.x = max(minPos.x, raw_coords[i].x);
+			minPos.x = max(minPos.x, raw_coords[i].y);
+			minPos.x = max(minPos.x, raw_coords[i].z);
+		}
+		*/
+		const float* raw_normals = mesh.raw_normals();
+		const unsigned int* raw_tris = mesh.raw_tris(); // 삼각형의 vertex의 index를 저장함
+
+		D3D11_BUFFER_DESC bd = {};
+		bd.Usage = D3D11_USAGE_IMMUTABLE;
+		bd.ByteWidth = sizeof(Vector3) * mesh.num_vrts();
+		bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+		bd.CPUAccessFlags = 0;
+
+		D3D11_SUBRESOURCE_DATA InitData = {};
+		InitData.pSysMem = raw_coords;											// vector3로 들어가도 되지만 memory size상으로는 같기 때문에 meomory copy가 일어나게 되면 저장된 것을 float3로 가져다 써도 됨 
+		hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pVertexBuffer_stl);
+		if (FAILED(hr))
+			return hr;
+
+		indices_stl = mesh.num_tris() * 3;
+		// Index Buffer 
+		bd.Usage = D3D11_USAGE_DEFAULT;
+		bd.ByteWidth = sizeof(UINT) * indices_stl;        // 36 vertices needed for 12 triangles in a triangle list
+		bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+		bd.CPUAccessFlags = 0;
+		InitData.pSysMem = raw_tris;
+		hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pIndexBuffer_stl);
+		if (FAILED(hr))
+			return hr;
+
+		bd.ByteWidth = sizeof(Vector3) * mesh.num_tris();
+		bd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+		InitData.pSysMem = raw_normals;
+		hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pNormalBuffer_stl);
+		if (FAILED(hr))
+			return hr;
+
+		D3D11_SHADER_RESOURCE_VIEW_DESC dcSrv = {};
+		dcSrv.Format = DXGI_FORMAT::DXGI_FORMAT_R32G32B32_FLOAT;
+		dcSrv.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
+		dcSrv.BufferEx.FirstElement = 0;
+		dcSrv.BufferEx.NumElements = mesh.num_tris();
+		hr = g_pd3dDevice->CreateShaderResourceView(g_pNormalBuffer_stl, &dcSrv, &g_pSRV_stl);
+		if (FAILED(hr))
+			return hr;
+	}
+#pragma endregion
+
 
 #pragma region Create a sphere
 	{
@@ -925,7 +1092,7 @@ HRESULT InitDevice()
 		// 이 parameter에 대해서 sphere를 위한 vertex buffer, index buffer를 생성하는 코드를 추가함 
 		std::vector<float> position, normal, texcoord;
 		const int stackCount = 100, sectorCount = 100;
-		
+
 		GenerateSphere(0.5f, sectorCount, stackCount, position, normal, texcoord); // 반지름이 0.5f인 구 
 		std::cout << "# of position: " << position.size() / 3 << ", # of normal: " << normal.size() / 3 << ", # of texcoord: "
 			<< texcoord.size() / 2 << std::endl;
@@ -996,6 +1163,88 @@ HRESULT InitDevice()
 	if (FAILED(hr))
 		return hr;
 
+#pragma region Env Mapping
+	// texture 의 4 channel 짜리 값을 넣기 위해, alpha channel 까지 넣기 위해서 img_rgba를 4 channel 짜리로 만듬 
+	// 그래서 alpha에 해당하는 값은 255값을 넣고 있음 
+	// 그리고 항상 new를 사용하여 할당하면 logic이 끝날 때 내가 만든 것에 대해 delocation 해줘야 함
+	// 안그러면 programming이 종료되어도 계속 memory가 잡혀 있기 때문 -> 이런게 쌓이다 보면 블루스크린 뜸, memory allocation이 중요한 이유 
+	int w, h, n;
+	unsigned char* img = stbi_load("envmap.jpg", &w, &h, &n, 0);
+	unsigned char* img_rgba = new unsigned char[w * h * 4];
+	for (int y = 0; y < h; y++)
+		for (int x = 0; x < w; x++) {
+			img_rgba[4 * (w * y + x) + 0] = img[3 * (w * y + x) + 0];
+			img_rgba[4 * (w * y + x) + 1] = img[3 * (w * y + x) + 1];
+			img_rgba[4 * (w * y + x) + 2] = img[3 * (w * y + x) + 2];
+			img_rgba[4 * (w * y + x) + 3] = (unsigned char)255;
+		}
+
+	// D3D11 : structure, {} : structure 안에 들어가는 값을 모두 Null을 넣어줌 
+	// ZeorMemory(&dcTex2D, sizeof(D3D11_TEXURE2D_DESC)) 이 texture size만큼에 대해서 해당 메모리가 지정하고 있는 위치에 zero 값을 넣는다. -> C style 
+	// D3D11_TEXTURE2D_DESC dcTex2D struct 안에 들어가는 parameter는 무엇이 있는가? -> Doc 참조 
+	// w, h : image의 size만큼 2D texture로 잡은 것 
+	// Format : texture는 4byte 단위로 정의되어야 한다, channel은 3개짜리로 쓸 수 있음 왜냐하면 buffer이런거 잡을 때 format을 3차원짜리 Vector를 썼었음, x,y,z가 float이였음 모두, 12byte였고, 4의 배수니까 
+	// 그런데 texture image는 각각의 channel이 1byte이기 때문에 RGB 1byte씩 잡으면 3vyte니까 잡을 수 없음, 4의 배수가 아니라서, 그래서 A8을 추가해서 4byte로 저장한건데 이를 위해서 위에서 A값을 255로 넣은 것임
+	// 이렇게 하는 이유는 texture를 생성할 때 initialize 하는 resource를 넣어주기 때문임, 데이터를 초기화 안하고 나중에 resource를 mapping해서 개별적으로 setting할 수 있지만 일단 통으로 initialize해서 사용하는 방법을 알려드림 
+	// ArraySize : Texture가 array로 지정될 수 있기 때문에, 지금은 array로 쓰지 않고 있음 
+	// MipLevel : mipmap level로 쓸 수 있음 
+	// SampleDesc.Count/Quality : Texture를 Sampling할 때 Super Sampling하느냐 에 대한 option, 그러나 보통은 Supersampling으로 해결되는 문제가 아니기 때문에 쓰지 않음, count -> texel마다 하나의 값을 저장하겠다 => 대부분의 경우 0,1로 두면 됨  
+	// Usage 는 알아두세요! Default : GPU에서 read/write이 되는 것, GPU에서 resource를 읽어서 rendertargetbuffer에 그림을 그린다 -> GPU에서 모두 수행하는 것 => 따라서 render target buffer는 반드시 DEFAULT 
+	// IMMUTABLE : GPU에서 read 만 되고 write은 안됨, model data가 있는데 더이상 수정이 안되는 static data라면 IMMUTABLE로 하면 좋다 -> 당연히 operation 제약이 많을 수록 memory access 효율이 좋아진다 
+	// DYNAMIC : GPU에서는 read만, CPU에서는 write만 되는 것 -> constant buffer 용으로 많이 씀 -> UpdateSubresource 확인해보자! 
+	// BINDflag : resource가 buffer type? 다른 type? -> 우리는 shader resource로 사용할 것임 
+	// CPUAccessFlag : IMMUTABLE로 했기 때문에 CPU access가 안되는 resource임, NULL 
+	// MiscFlag : Mipmap을 허용하냐? 안하냐? -> 허용 안함, null 
+	D3D11_TEXTURE2D_DESC dcTex2D = {};
+	dcTex2D.Width = w;
+	dcTex2D.Height = h;
+	dcTex2D.Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM;
+	dcTex2D.ArraySize = 1;
+	dcTex2D.MipLevels = 1;  
+	dcTex2D.SampleDesc.Count = 1;
+	dcTex2D.SampleDesc.Quality = 0;
+	dcTex2D.Usage = D3D11_USAGE_IMMUTABLE;
+	dcTex2D.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+	dcTex2D.CPUAccessFlags = 0;
+	dcTex2D.MiscFlags = 0;
+
+	// 위의 discription을 가지고...
+	// GPU에 resource를 만들 때는 Device를 사용함, context가 아니라
+	// Device를 가지고 2D Texture를 만드는데 이때 만들 때 resource를 discription 하는 것은 위에 것을 쓰고, Initialization buffer는 위의 내용 
+	// SysMemPitch : 사실 img_rgba는 1D buffer임, texture는 근데 2D임, 그래서 첫 번째 y=0인거에 대해서는 몇개, y=1일때는 몇개, stride 개수를 정의하는 정보, width만큼인데 4channel짜리니까 4개씩  
+	// SysMemSlicePitch : 3차원 data일때 쓰는 것 
+	// 이렇게 만들어진 2D texture를 &g_texEnvMap에 저장
+	// 이렇게 Texture도 IMMUTABLE로 잘 만들어졌고, INITIALIZATION도 잘 되어있음 
+	D3D11_SUBRESOURCE_DATA InitTex2DData;
+	InitTex2DData.pSysMem = img_rgba;
+	InitTex2DData.SysMemPitch = w * 4;
+	InitTex2DData.SysMemSlicePitch = 0;
+	hr = g_pd3dDevice->CreateTexture2D(&dcTex2D, &InitTex2DData, &g_texEnvMap);
+	delete[] img_rgba;
+	if (FAILED(hr)) {
+		return hr;
+	}
+
+	// 2D texture를 shader에 setting 하기 위한 view resource 만들기 -> Normal buffer를 만들던 때와 비슷함 
+	// Format : texture foramt과 똑같은 것을 사용 
+	// ViewDimension : Normal Buffer일때는 Bufferex를 썼는데 이번에는 texture2d dimension을 사용 
+	// Miplevle : 하나 짜리 쓰니까 1 , MostDetailedMip : Mipmap 쓰지 않으니까 0번째 level data가 original data => 이렇게 쓰면 된다 정도만 알아두세요 
+	// 해당 resource가 g_tSRVEnvMap view에 mapping됨 
+	// 이 view는 env map 정보이며 이 view를 GPU pipeline에 mapping할 것인데 이 view를 object단위의 parameter를 넣을지 아니면 scene단위의 parameter를 넣을지 고민해야 함 
+	// 근데 이는 env map 자체이기 때문에 scene paramter로 두겠음, 마치 light을 scenen paramter로 둔 것 처럼 
+	// 근데 원래는 object단위로 넣었는데 현장에서 바로 global로 넣겠음
+	D3D11_SHADER_RESOURCE_VIEW_DESC dcTexSRV = {};
+	dcTexSRV.Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM;
+	dcTexSRV.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; //55분쯤
+	dcTexSRV.Texture2D.MipLevels = 1;
+	dcTexSRV.Texture2D.MostDetailedMip = 0;
+	hr = g_pd3dDevice->CreateShaderResourceView(g_texEnvMap, &dcTexSRV, &g_tSRVEnvMap);
+	if (FAILED(hr)) {
+		return hr;
+	}
+
+#pragma endregion 
+
 #pragma region Transform Setting
 	g_pos_light = Vector3(0, 8, 0);
 
@@ -1009,10 +1258,11 @@ HRESULT InitDevice()
 	g_vec_up = Vector3(0.0f, 1.0f, 0.0f);
 	g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 
-	g_mProjection = Matrix::CreatePerspectiveFieldOfView(DirectX::XM_PIDIV2, width / (FLOAT)height, 0.01f, 100.0f);
+	g_mProjection = Matrix::CreatePerspectiveFieldOfView(DirectX::XM_PIDIV2, width / (FLOAT)height, 0.01f, 1000.0f);
 #pragma endregion
 
 #pragma region States
+	// rasterizer state를 하나 더 만들어서 object별로 다르게 setting 되도록 하였음 -> 실습에서는 시간관계로 backface culling을 쓰지 않음 
 	D3D11_RASTERIZER_DESC descRaster;
 	ZeroMemory(&descRaster, sizeof(D3D11_RASTERIZER_DESC));
 	descRaster.FillMode = D3D11_FILL_SOLID;
@@ -1041,27 +1291,71 @@ HRESULT InitDevice()
 	hr = g_pd3dDevice->CreateDepthStencilState(&descDepthStencil, &g_pDSState);
 #pragma endregion
 
+	// Sampler라는 resource를 만들고 이를 set해줘도 됨, 다른 Raster state와 마찬가지로 
+	// 그러나 번거롭기 때문에 그냥 간단하게 hlsl에서 만들어도 됨 
+	D3D11_SAMPLER_DESC dcSample = {};
+	dcSample.Filter = D3D11_FILTER::D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	dcSample.AddressU = D3D11_TEXTURE_ADDRESS_MODE::D3D11_TEXTURE_ADDRESS_WRAP;
+	dcSample.AddressV = D3D11_TEXTURE_ADDRESS_MODE::D3D11_TEXTURE_ADDRESS_WRAP;
+	dcSample.AddressW = D3D11_TEXTURE_ADDRESS_MODE::D3D11_TEXTURE_ADDRESS_WRAP;
+	*(Vector4*)&dcSample.BorderColor = Vector4();
+	dcSample.MipLODBias = 0;
+	dcSample.MaxAnisotropy = 16;
+	dcSample.MinLOD = 0;
+	dcSample.MaxLOD = D3D11_FLOAT32_MAX;
+	dcSample.ComparisonFunc = D3D11_COMPARISON_NEVER;
+	//hr = g_pd3dDevice->CreateSamplerState(&dcSample, &g_samplerTex2D);
+	//if (FAILED(hr)) {
+	//	return hr;
+	//}
+
+
+
+
 	// setting 된 것을 가지고 map을 전역변수로 만들었었음 
 	// "CUBE"라는 이름으로 object에 들어가는 정보들을 setting함 -> GPU resource들은 전역변수로 빼서 관리하고 있기 때문에 MyObject에서 이를 삭제하거나 그러지 않음 
 	// 그러나 밑에 처럼 한 이유는 g_pVertexBuffer_cube를 여러개 만들 수 있음 
 	// 개별 object는(MyObject) object 단위의 constant buffer가 있고, structure가 생성됨과 동시에 생성자 안에서 constant buffer가 생성됨 
 	// object를 rendering할 때 사용되는 W_transform, material properties를 저장하는 Constant buffer를 MyObject에서 생성되게 했음 
-	g_sceneObjs["CUBE"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader1,
+	g_sceneObjs["CUBE"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, g_pSRV_cube, g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader1,
 		g_pRSState, g_pDSState, sizeof(CubeVertex), sizeof(WORD), indices_cube,
 		g_mWorld_cube, Color(0.1f, 0.1f, 0.1f), Color(0.7f, 0.7f, 0), Color(0.2f, 0, 0.2f), 10.f);
+
+	// input assembly layout을 수정해야 함 -> vertex Buffer의 point 정보만 들어가고 있기 때문 
+	g_sceneObjs["STL"] = MyObject(g_pVertexBuffer_stl, g_pIndexBuffer_stl, g_pSRV_stl, g_pIALayoutP, g_pVertexShaderP, g_pPixelShader1,
+		g_pRSState, g_pDSState, sizeof(Vector3), sizeof(UINT), indices_stl,
+		Matrix::CreateScale(1.f/12.f) * Matrix::CreateTranslation(-10.f, 0, 0), Color(0.1f, 0.1f, 0.1f), Color(0.7f, 0, 0.7f), Color(0.2f, 0, 0.2f), 10.f);
 
 	// 가려져서 안그려져야 하는데 빛이 보이고 있음
 	// 객체와 객체 사이의 geometry interaction은 수행하고 있지 않음
 	// view 기준의 backface가 아니냐를 판정해서 specular term을 없애는 과제였음
 	// 그렇기에 local lighting을 잘 보여주는 예시가 된다 
-	// Diffuse term을 노란색으로 두지 않았는데 노란색으로 보임 -> shader code를 hard coding 했기 때문 -> object단위의 Constant buffe가 제대로 setting되어 있지 않음   
-	g_sceneObjs["CUBE_2"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader1,
+	// Diffuse term을 노란색으로 두지 않았는데 노란색으로 보임 -> shader code를 hard coding 했기 때문 -> object단위의 Constant buffe가 제대로 setting되어 있지 않음
+	// 수정 후 초록색 빛이 보임 
+	// 이는 G에 대한 빛을 쐈기 때문에 G,B 색을 가진 Cube여도 G빛만 반사하기 때문에 초록색으로 보임 
+	// 즉, 물체의 Diffuse color가 R,G 라면 lightColor가 1,1,1 white를 보내도 R,G의 color(yellow)만 반사시킴! 
+	g_sceneObjs["CUBE_2"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, NULL,g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader1, // face normal vector가 없음 -> NULL 
 		g_pRSState, g_pDSState, sizeof(CubeVertex), sizeof(WORD), indices_cube,
-		Matrix::CreateScale(5.f) * Matrix::CreateTranslation(10.f,0,0), Color(0.1f, 0.1f, 0.1f), Color(0.f, 0.7f, 0.7f), Color(0.2f, 0, 0.2f), 10.f);
+		Matrix::CreateScale(5.f) * Matrix::CreateTranslation(10.f, 0, 0), Color(0.1f, 0.1f, 0.1f), Color(0, 0.7f, 0.7f), Color(0.2f, 0, 0.2f), 10.f);
 
-	g_sceneObjs["SPHERE"] = MyObject(g_pVertexBuffer_sphere, g_pIndexBuffer_sphere, g_pIALayoutPNT, g_pVertexShaderPNT, g_pPixelShader2,
+	g_sceneObjs["SPHERE"] = MyObject(g_pVertexBuffer_sphere, g_pIndexBuffer_sphere, NULL, g_pIALayoutPNT, g_pVertexShaderPNT, g_pPixelShader2,
 		g_pRSState, g_pDSState, sizeof(SphereVertex), sizeof(UINT), indices_sphere,
 		g_mWorld_sphere, Color(1.f, 1.f, 1.f), Color(), Color(), 1.f);
+
+	// World_matrix에서 orientation을 주는 transform 을 안하고 Scaling만 주는 matrix를 사용하였기 때문에, orientation을 바꾸는 transform이 필요함 
+	// x축으로 적당히 회전해도 되지만 우리는 look at function을 사용하자 
+	// z 축 방향을 y축방향이 되게 해야 한다 -> CS에서 보는 방향의 -방향이 z축 방향이였음 -> lookat position이 들어감 
+	// 첫 번째 element : CS의 원점은 WS의 원점과 같다, 두 번째 elelment : CS가 보는 방향이 구의 0, -1, 0 이여야 한다, 세 번째 element : upvector, y축인데 그대로 오면 됨 
+	Matrix matR = Matrix::CreateLookAt(Vector3(0, 0, 0), Vector3(0, -1, 0), Vector3(0, 0, 1));
+
+	// 직경이 500인 구가 center에 놓임 -> Backface cullling이 일어났기 때문에 보이지 않음 
+	// 카메라가 구 안으로 들어가면 구 안에서 보면 구의 안쪽 면, Backface를 보게 되는 것이고 Backface에 대해서는 culling out이 되고 있기 때문임
+	// 카메라 setting할 때 np, fp을 설정했을 때 가장 멀리 있는 것이 100이였음, 카메라의 위치가 20일때 가장 멀리있는 것을 보아도 -80에 있는 것을 볼 수 있음 
+	// sphere는 더 멀리 있음, 그렇기 때문에 camera fp을 1000정도로 늘림 
+	// 원점에서 Translation이 일어나지 않으니까 Scale, Rotation 순서는 상관없지만 통상적으로 Orientation먼저 잡고 가자
+	g_sceneObjs["SPHERE_ENV"] = MyObject(g_pVertexBuffer_sphere, g_pIndexBuffer_sphere, NULL, g_pIALayoutPNT, g_pVertexShaderPNT, g_pPixelShader2,
+		g_pRSState, g_pDSState, sizeof(SphereVertex), sizeof(UINT), indices_sphere,
+		matR * Matrix::CreateScale(20.f), Color(1.f, 1.f, 1.f), Color(), Color(), 1.f);
 
 	return hr;
 }
@@ -1080,16 +1374,24 @@ void Render()
 	cbTransformScene.mProjection = g_mProjection.Transpose();
 	g_pImmediateContext->UpdateSubresource(g_pCB_TransformWorld, 0, nullptr, &cbTransformScene, 0, 0);
 	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pCB_TransformWorld);							   // update된 Cbuffer를 device context가 개별 shader에 setting 해줌 		
+	g_pImmediateContext->PSSetConstantBuffers(0, 1, &g_pCB_TransformWorld);							   // view matrix를 PS에서 가져올 수 있음 
 
 	CB_Lights cbLight;
 	cbLight.posLight = Vector3::Transform(g_pos_light, g_mView);
 	cbLight.dirLight = Vector3::TransformNormal(Vector3(0, 1, 0), g_mView);
 	cbLight.dirLight.Normalize();
-	cbLight.lightColor = Color(1, 1, 0, 1).RGBA();
+	cbLight.lightColor = Color(1, 1, 1, 1).RGBA();
 	cbLight.lightFlag = 0;
+	// 이런 경우에 가장 좋은 BUFFER는? USAGE는 무엇인가? **시험문제**
+	// tempolar하게 dynamic usage resource를 만드는 것 -> CPU write이 되니까 dynamic resource에 값을 채워넣고 그렇게 저장된 GPU의 resource를 constantbuffer에 copy하면 GPU write이 된다 
+	// constant buffer는 매 프레임마다 자주 바뀜, 그렇기 때문에 그 값을 update하기 위해서 tempoler하게 dynamic resource를 잡고 copy하는 것이 오히려 overhead가 걸릴 확률이 높음 -> 그런 경우에 대해서는 그냥 DYNAMIC으로 만들면 됨 
+	// 그런데 constant buffer가 매 프레임이 아니라 간혹 일어나는 event에 대해서만 update가 된다면 DEFAULT가 더 낫다 
 	g_pImmediateContext->UpdateSubresource(g_pCB_Lights, 0, nullptr, &cbLight, 0, 0);
 	//g_pImmediateContext->VSSetConstantBuffers(2, 1, &g_pCB_Lights); 굉장히 작은 resource이지만 VS 에서는 해당 정보를 사용하지 않기 때문에 낭비하지말고! 
 	g_pImmediateContext->PSSetConstantBuffers(2, 1, &g_pCB_Lights);
+
+	// shader resource에서 shader code를 보면 0번째 slot은 NormalBuffer가 쓰고 있음 
+	g_pImmediateContext->PSSetShaderResources(1, 1, &g_texEnvMap);
 
 	// Just clear the backbuffer
 	// draw buffer가(main rendering function) 호출되기 전에 buffer clear 
@@ -1137,6 +1439,11 @@ void Render()
 		obj.UpdateConstanceBuffer();
 		ID3D11Buffer* pCBuffer = obj.GetConstantBuffer();
 		g_pImmediateContext->VSSetConstantBuffers(1, 1, &pCBuffer);
+		g_pImmediateContext->PSSetConstantBuffers(1, 1, &pCBuffer);
+
+		// SRViewNormal이 null이 아니면 shader에 Normal resource buffer set
+		if (obj.pSRViewNormal)
+			g_pImmediateContext->PSSetShaderResources(0, 1, &obj.pSRViewNormal);
 
 		// model별로 RSS, DSS를 갖게 함 
 		g_pImmediateContext->RSSetState(obj.pRSState);
@@ -1153,7 +1460,11 @@ void Render()
 		// 만약 index buffer가 설정되어 있다면 indexed function을 
 		// 그렇지 않으면 draw function을 사용 
 		// draw function을 쓸때는 vertex buffer의 element 개수를 적고, index buffer를 쓸 때는 index buffer의 element개수를 적음 
-		// 그래서 object 별로 다른 개수가 들어갈 수 있기 때문에 MyObject variable로 별도로 저장해 사용함 
+		// 그래서 object 별로 다른 개수가 들어갈 수 있기 때문에 MyObject variable로 별도로 저장해 사용함
+
+		// 36개씩 cube를 그리고 있기 때문에 어떤 face를 그리고 있는지 확인하고 싶으면 offset 6단위로 확인!  
+		// 이때 culling에 의해 뒷 부분은 보이지 않으므로 descRaster.CullMode = D3D11_CULL_BACK -> NONE으로 수정   
+		//g_pImmediateContext->DrawImndexed(6,0,0);
 		if (obj.pIBuffer)
 			g_pImmediateContext->DrawIndexed(obj.drawCount, 0, 0);
 		else 
@@ -1182,16 +1493,32 @@ void CleanupDevice()
 
 	if (g_pCB_TransformWorld) g_pCB_TransformWorld->Release();
 	if (g_pCB_Lights) g_pCB_Lights->Release();
+
 	if (g_pIndexBuffer_cube) g_pIndexBuffer_cube->Release();
+	if (g_pIndexBuffer_stl) g_pIndexBuffer_stl->Release();
 	if (g_pIndexBuffer_sphere) g_pIndexBuffer_sphere->Release();
+
 	if (g_pVertexBuffer_cube) g_pVertexBuffer_cube->Release();
+	if (g_pSRV_cube) g_pSRV_cube->Release();
+	if (g_pNormalBuffer_cube) g_pNormalBuffer_cube->Release();
+
+	if (g_pVertexBuffer_stl) g_pVertexBuffer_stl->Release();
+	if (g_pSRV_stl) g_pSRV_stl->Release();
+	if (g_pNormalBuffer_stl) g_pNormalBuffer_stl->Release();
+
 	if (g_pVertexBuffer_sphere) g_pVertexBuffer_sphere->Release();
+	
 	if (g_pIALayoutPCN) g_pIALayoutPCN->Release();
 	if (g_pIALayoutPNT) g_pIALayoutPNT->Release();
+	if (g_pIALayoutP) g_pIALayoutP->Release();
 	if (g_pVertexShaderPCN) g_pVertexShaderPCN->Release();
 	if (g_pVertexShaderPNT) g_pVertexShaderPNT->Release();
+	if (g_pVertexShaderP) g_pVertexShaderP->Release();
 	if (g_pPixelShader1) g_pPixelShader1->Release();
 	if (g_pPixelShader2) g_pPixelShader2->Release();
+
+	if (g_texEnvMap) g_texEnvMap->Release();
+	if (g_tSRVEnvMap) g_tSRVEnvMap->Release();
 
 	if (g_pDepthStencilView) g_pDepthStencilView->Release();
 	if (g_pDepthStencil) g_pDepthStencil->Release();
