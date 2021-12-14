@@ -73,6 +73,8 @@ ID3D11VertexShader* g_pVertexShaderPNT = nullptr;
 ID3D11VertexShader* g_pVertexShaderP = nullptr;
 ID3D11PixelShader* g_pPixelShader1 = nullptr;
 ID3D11PixelShader* g_pPixelShader2 = nullptr;
+ID3D11PixelShader* g_pPixelShader3 = nullptr;
+ID3D11PixelShader* g_pPixelShader4 = nullptr;
 ID3D11InputLayout* g_pIALayoutPCN = nullptr;
 ID3D11InputLayout* g_pIALayoutPNT = nullptr;
 ID3D11InputLayout* g_pIALayoutP = nullptr;
@@ -88,6 +90,7 @@ ID3D11Buffer* g_pIndexBuffer_stl = nullptr;
 ID3D11Buffer* g_pIndexBuffer_sphere = nullptr;
 ID3D11Buffer* g_pCB_TransformWorld = nullptr;
 
+ID3D11SamplerState* g_samplerTex2D = nullptr;
 ID3D11Texture2D* g_texEnvMap = nullptr;
 ID3D11ShaderResourceView* g_tSRVEnvMap = nullptr;
 
@@ -338,6 +341,8 @@ struct CB_Lights
 
 	Vector3 dirLight;							 // directional light의 direction을 저장하는 vector 
 	int lightFlag;								 // light을 point? directional? 쓸지 shader에서 판정하기 위한 flag
+
+	Matrix mView2EnvOS;
 };
 
 struct CubeVertex
@@ -744,11 +749,15 @@ HRESULT Recompile(bool generateIALayout)
 	if (pVSBlobPNT) pVSBlobPNT->Release();
 	if (pVSBlobP) pVSBlobP->Release();     // reference count가 counting 되는 resource에 대해서는 다 쓰고 나면 무조건 Release! 
 	
-	ID3DBlob *pPSBlob1 = nullptr, *pPSBlob2 = nullptr;
+	ID3DBlob *pPSBlob1 = nullptr, *pPSBlob2 = nullptr, * pPSBlob3 = nullptr, * pPSBlob4 = nullptr;
 	hr |= CreateShader("PS1", "ps_4_0", &pPSBlob1, (ID3D11DeviceChild**)&g_pPixelShader1);
 	hr |= CreateShader("PS2", "ps_4_0", &pPSBlob2, (ID3D11DeviceChild**)&g_pPixelShader2);
+	hr |= CreateShader("PS3", "ps_4_0", &pPSBlob3, (ID3D11DeviceChild**)&g_pPixelShader3);
+	hr |= CreateShader("PS4", "ps_4_0", &pPSBlob4, (ID3D11DeviceChild**)&g_pPixelShader4);
 	if (pPSBlob1) pPSBlob1->Release();
 	if (pPSBlob2) pPSBlob2->Release();
+	if (pPSBlob3) pPSBlob3->Release();
+	if (pPSBlob4) pPSBlob4->Release();
 
 	return hr;
 }
@@ -1266,7 +1275,7 @@ HRESULT InitDevice()
 	D3D11_RASTERIZER_DESC descRaster;
 	ZeroMemory(&descRaster, sizeof(D3D11_RASTERIZER_DESC));
 	descRaster.FillMode = D3D11_FILL_SOLID;
-	descRaster.CullMode = D3D11_CULL_BACK;
+	descRaster.CullMode = D3D11_CULL_NONE;
 	descRaster.FrontCounterClockwise = true;
 	descRaster.DepthBias = 0;
 	descRaster.DepthBiasClamp = 0;
@@ -1304,27 +1313,24 @@ HRESULT InitDevice()
 	dcSample.MinLOD = 0;
 	dcSample.MaxLOD = D3D11_FLOAT32_MAX;
 	dcSample.ComparisonFunc = D3D11_COMPARISON_NEVER;
-	//hr = g_pd3dDevice->CreateSamplerState(&dcSample, &g_samplerTex2D);
-	//if (FAILED(hr)) {
-	//	return hr;
-	//}
-
-
-
+	hr = g_pd3dDevice->CreateSamplerState(&dcSample, &g_samplerTex2D);
+	if (FAILED(hr)) {
+		return hr;
+	}
 
 	// setting 된 것을 가지고 map을 전역변수로 만들었었음 
 	// "CUBE"라는 이름으로 object에 들어가는 정보들을 setting함 -> GPU resource들은 전역변수로 빼서 관리하고 있기 때문에 MyObject에서 이를 삭제하거나 그러지 않음 
 	// 그러나 밑에 처럼 한 이유는 g_pVertexBuffer_cube를 여러개 만들 수 있음 
 	// 개별 object는(MyObject) object 단위의 constant buffer가 있고, structure가 생성됨과 동시에 생성자 안에서 constant buffer가 생성됨 
 	// object를 rendering할 때 사용되는 W_transform, material properties를 저장하는 Constant buffer를 MyObject에서 생성되게 했음 
-	g_sceneObjs["CUBE"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, g_pSRV_cube, g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader1,
+	g_sceneObjs["CUBE"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, g_pSRV_cube, g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader4,
 		g_pRSState, g_pDSState, sizeof(CubeVertex), sizeof(WORD), indices_cube,
 		g_mWorld_cube, Color(0.1f, 0.1f, 0.1f), Color(0.7f, 0.7f, 0), Color(0.2f, 0, 0.2f), 10.f);
 
 	// input assembly layout을 수정해야 함 -> vertex Buffer의 point 정보만 들어가고 있기 때문 
-	g_sceneObjs["STL"] = MyObject(g_pVertexBuffer_stl, g_pIndexBuffer_stl, g_pSRV_stl, g_pIALayoutP, g_pVertexShaderP, g_pPixelShader1,
+	g_sceneObjs["STL"] = MyObject(g_pVertexBuffer_stl, g_pIndexBuffer_stl, g_pSRV_stl, g_pIALayoutP, g_pVertexShaderP, g_pPixelShader4,
 		g_pRSState, g_pDSState, sizeof(Vector3), sizeof(UINT), indices_stl,
-		Matrix::CreateScale(1.f/12.f) * Matrix::CreateTranslation(-10.f, 0, 0), Color(0.1f, 0.1f, 0.1f), Color(0.7f, 0, 0.7f), Color(0.2f, 0, 0.2f), 10.f);
+		Matrix::CreateScale(1.f/12.f) * Matrix::CreateTranslation(-10.f, 0, 0), Color(0.1f, 0.1f, 0.1f), Color(0.7f, 0.7f, 0.7f), Color(0.2f, 0.2f, 0.2f), 10.f);
 
 	// 가려져서 안그려져야 하는데 빛이 보이고 있음
 	// 객체와 객체 사이의 geometry interaction은 수행하고 있지 않음
@@ -1338,6 +1344,7 @@ HRESULT InitDevice()
 		g_pRSState, g_pDSState, sizeof(CubeVertex), sizeof(WORD), indices_cube,
 		Matrix::CreateScale(5.f) * Matrix::CreateTranslation(10.f, 0, 0), Color(0.1f, 0.1f, 0.1f), Color(0, 0.7f, 0.7f), Color(0.2f, 0, 0.2f), 10.f);
 
+	// light에 해당하는 것은 PS2를 넣고 Envmap에 해당하는 것은 PS3을 넣었다 
 	g_sceneObjs["SPHERE"] = MyObject(g_pVertexBuffer_sphere, g_pIndexBuffer_sphere, NULL, g_pIALayoutPNT, g_pVertexShaderPNT, g_pPixelShader2,
 		g_pRSState, g_pDSState, sizeof(SphereVertex), sizeof(UINT), indices_sphere,
 		g_mWorld_sphere, Color(1.f, 1.f, 1.f), Color(), Color(), 1.f);
@@ -1353,9 +1360,10 @@ HRESULT InitDevice()
 	// 카메라 setting할 때 np, fp을 설정했을 때 가장 멀리 있는 것이 100이였음, 카메라의 위치가 20일때 가장 멀리있는 것을 보아도 -80에 있는 것을 볼 수 있음 
 	// sphere는 더 멀리 있음, 그렇기 때문에 camera fp을 1000정도로 늘림 
 	// 원점에서 Translation이 일어나지 않으니까 Scale, Rotation 순서는 상관없지만 통상적으로 Orientation먼저 잡고 가자
-	g_sceneObjs["SPHERE_ENV"] = MyObject(g_pVertexBuffer_sphere, g_pIndexBuffer_sphere, NULL, g_pIALayoutPNT, g_pVertexShaderPNT, g_pPixelShader2,
+	// 환경 mapping을 이루는 Sphere의 OS를 변화를 준 것 
+	g_sceneObjs["SPHERE_ENV"] = MyObject(g_pVertexBuffer_sphere, g_pIndexBuffer_sphere, NULL, g_pIALayoutPNT, g_pVertexShaderPNT, g_pPixelShader3,
 		g_pRSState, g_pDSState, sizeof(SphereVertex), sizeof(UINT), indices_sphere,
-		matR * Matrix::CreateScale(20.f), Color(1.f, 1.f, 1.f), Color(), Color(), 1.f);
+		matR * Matrix::CreateScale(500.f), Color(1.f, 1.f, 1.f), Color(), Color(), 1.f);
 
 	return hr;
 }
@@ -1365,6 +1373,8 @@ HRESULT InitDevice()
 //--------------------------------------------------------------------------------------
 void Render()
 {
+	g_pImmediateContext->PSSetSamplers(0, 1, &g_samplerTex2D);
+
 #pragma region Common Scene (World)
 	// view, projection transform은 VS에서만 쓰일 것이기 때문에 VS에만 setting 
 	// light source는 goraud shading을 사용하지 않기 때문에(phong shading을 쓰기 때문에) VS에는 setting할 필요 없음, PS에만 setting -> 최적화하기 위해서 
@@ -1382,6 +1392,17 @@ void Render()
 	cbLight.dirLight.Normalize();
 	cbLight.lightColor = Color(1, 1, 1, 1).RGBA();
 	cbLight.lightFlag = 0;
+
+	// ** 시험 문제 ** 
+	// 1. CS의 matrix를 World matrix로 바꿔주는 Transfor matrix -> view2world
+	// 2. world space -> environment sphere에 대한 object space 로 가져가는 것 -> world2envsphere
+	// 3. Row major 니까 왼쪽에서 오른쪽으로 곱합니다
+	// 4. 그러나 hsls은 Column major니까 transpose해줘야 한다 
+	Matrix mView2World = g_mView.Invert();
+	MyObject& envSphere = g_sceneObjs["SPHERE_ENV"];
+	Matrix mWorld2EnvSphere = envSphere.mModel.Invert();
+	cbLight.mView2EnvOS = (mView2World * mWorld2EnvSphere).Transpose();
+
 	// 이런 경우에 가장 좋은 BUFFER는? USAGE는 무엇인가? **시험문제**
 	// tempolar하게 dynamic usage resource를 만드는 것 -> CPU write이 되니까 dynamic resource에 값을 채워넣고 그렇게 저장된 GPU의 resource를 constantbuffer에 copy하면 GPU write이 된다 
 	// constant buffer는 매 프레임마다 자주 바뀜, 그렇기 때문에 그 값을 update하기 위해서 tempoler하게 dynamic resource를 잡고 copy하는 것이 오히려 overhead가 걸릴 확률이 높음 -> 그런 경우에 대해서는 그냥 DYNAMIC으로 만들면 됨 
@@ -1391,7 +1412,8 @@ void Render()
 	g_pImmediateContext->PSSetConstantBuffers(2, 1, &g_pCB_Lights);
 
 	// shader resource에서 shader code를 보면 0번째 slot은 NormalBuffer가 쓰고 있음 
-	g_pImmediateContext->PSSetShaderResources(1, 1, &g_texEnvMap);
+	g_pImmediateContext->PSSetShaderResources(1, 1, &g_tSRVEnvMap);
+	//g_pImmediateContext->PSSetShaderResources(1, 1, &g_texEnvMap);
 
 	// Just clear the backbuffer
 	// draw buffer가(main rendering function) 호출되기 전에 buffer clear 
@@ -1490,6 +1512,7 @@ void CleanupDevice()
 
 	// global variable로 GPU resource에 할당된 것들을 모두 Release 
 	if (g_pImmediateContext) g_pImmediateContext->ClearState();
+	if (g_samplerTex2D) g_samplerTex2D->Release();
 
 	if (g_pCB_TransformWorld) g_pCB_TransformWorld->Release();
 	if (g_pCB_Lights) g_pCB_Lights->Release();
@@ -1516,6 +1539,8 @@ void CleanupDevice()
 	if (g_pVertexShaderP) g_pVertexShaderP->Release();
 	if (g_pPixelShader1) g_pPixelShader1->Release();
 	if (g_pPixelShader2) g_pPixelShader2->Release();
+	if (g_pPixelShader2) g_pPixelShader3->Release();
+	if (g_pPixelShader2) g_pPixelShader4->Release();
 
 	if (g_texEnvMap) g_texEnvMap->Release();
 	if (g_tSRVEnvMap) g_tSRVEnvMap->Release();

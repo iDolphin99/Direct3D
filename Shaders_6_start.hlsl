@@ -21,6 +21,8 @@ cbuffer LightBuffer : register(b2)
     int g_lightColor;
     float3 g_dirLightCS;
     int g_lightFlag;
+
+    matrix g_mView2EnvOS;
 }
 
 // register -> shader resource는 t(texture)를 씀, conventionally
@@ -34,8 +36,11 @@ Buffer<float3> NormalBuffer : register(t0);
 // 만약 여기서 float2로 하면 강제적으로 R,G값만 사용할 수 있음, A값은 쓰지 않을거라서 float3해도 됨  
 Texture2D<float4> EnvTexture : register(t1);
 
+SamplerState EnvSamplerCpp : register(s0);
+
 // Sampler 자체를 Resource로 만들어서 set해줘도 됨 -> 1: 04: 41에 있음 
-SamplerState EnvSampler : register(s1)
+// sampler는 Semantics가 s로 시작해야 한다
+SamplerState EnvSampler : register(s16)
 {
     Filter = MIN_MAG_MIP_LINEAR;
     AddressU = Border;
@@ -210,6 +215,14 @@ float4 PS1(PS_INPUT1 input, uint primID : SV_PrimitiveID) : SV_Target
 
 float4 PS2(PS_INPUT2 input) : SV_Target
 {
+    float3 colorOut = ConvertInt2Float3(g_lightColor);
+
+    return float4(colorOut, 1);
+}
+
+// 
+float4 PS3(PS_INPUT2 input) : SV_Target
+{
     //float3 colorOut = ConvertInt2Float3(g_lightColor);
 
     // u, v 값에 대해서 mapping된 것이 보여짐 
@@ -217,7 +230,76 @@ float4 PS2(PS_INPUT2 input) : SV_Target
 
     // Sampler로 sampling 하는 방법 -> 해당 x,y값에 대해서 읽어와서 mapping함 
     // 우리가 보는 방향이 z 축이기 때문에 map의 하늘방향부터 보이는 것이 맞음 
-    float3 colorOut = EnvTexture.Sample(EnvSampler, input.Tex.xy);
+    float3 colorOut = EnvTexture.Sample(EnvSamplerCpp, input.Tex.xy);
 
     return float4(colorOut, 1);
+}
+
+float4 PS4(PS_INPUT1 input, uint primID : SV_PrimitiveID) : SV_Target
+{
+    // Cube는 Texture coordinate이 안들어오고 Reflection vector로부터 u,v를 계산해야 하고 
+    // u,v를 계산하는 model은 Blinn/Newell Latitude Mapping method을 사용할 것임 
+
+    // Light Color 
+    float3 lightColor = ConvertInt2Float3(g_lightColor);// float3(1.f, 1.f, 1.f);
+    // Material Colors : ambient, diffuse, specular, shininess
+    float3 mtcAmbient = ConvertInt2Float3(g_mtAmbient), mtcDiffuse = ConvertInt2Float3(g_mtDiffuse), mtcSpec = ConvertInt2Float3(g_mtSpec);
+    float shine = g_shininess;
+    // Light type (point)... 
+    float3 L, N, R, V; // compute to do
+
+    // Reflection vector를 구하는 방법 
+    {
+        if (g_lightFlag == 0)
+            L = normalize(g_posLightCS - input.PosCS);
+        else
+            L = g_dirLightCS;
+        V = normalize(-input.PosCS);
+
+        //N = normalize(input.Nor);
+        // 0, 1 ==> 0
+        // 1, 2 ==> 1
+        N = normalize(mul(NormalBuffer[primID], mul(g_mView, g_mWorld))); // 면단위로 같은 노멀 백터
+
+        R = 2 * dot(N, L) * N - L;
+    }
+
+    // Reflection vector를 구하는 방법 
+    // 해당 vector는 CS의 vector고 이 vector를 Hyper sphere의 OS로 가져가는 matrix를 구해서 Constant Buffer에 넣을 것임 -> CBLight 
+    // 환경 map에서 가져오는 Texture sample도 light으로 보겠다고 했으므로
+    // 아무튼 viewmatrix 2 envmatrix 를 구했음, 하지만 transform하지말자, x,y,z값이 나왔기 때문에 이로부터 u,v를 계산하는 식을 확인하면
+    // r 은 unit이라 보고 1이라 치자 -> theta와 phi로 계산해야 함 
+    // z는 sin(phi)로부터 phi를 구할 수 있음 
+    // phi가 적도를 중심으로 경도로 가는 것이 phi가 됨 
+    // 우리는 v값이 0->1, 위에서부터 아래쪽으로 가게 만들어야 함 
+    float3 vR = 2 * dot(N, V) * N - V;
+    vR = normalize(vR);
+
+    float3 color1 = PhongLighting2(L, N, R, V,
+        mtcAmbient, mtcDiffuse, mtcSpec, shine,
+        lightColor);
+
+    // 얘를 가지고 lighting하려고 작성한 것 
+    float3 envR = mul(vR, g_mView2EnvOS);
+    envR = normalize(envR);
+
+    float X_PI = 3.14f;
+    float phi = asin(envR.z); // 90~-90
+    float cosphi = cos(phi);
+    float theta = acos(max(min(envR.x / cos(phi),0.999f),-0.999f)); // 0 ~ pi
+    float u = envR.y >= 0 ? theta / (2 * X_PI) : (2 * X_PI - theta) / (2 * X_PI);
+    float v = (X_PI / 2 - phi) / X_PI;
+
+    // u,v를 계산하고 u,v로부터 mapping하는 code
+    //float3 texColor = EnvTexture.Sample(EnvSamplerCpp, input.Tex.xy);
+    float3 texColor = EnvTexture.Sample(EnvSamplerCpp, float2(u, v));
+
+    // 이때 R vector가 light vector 로 쓰여야하고, light vector에 대해서 reflection vector를 구해야 하니까 다시 계산해준 것 
+    // 여기서 lighting은 view space에서 이뤄지기 때문에 넣은것
+    // lighting property는 기존과 같다는 가정하에 기존 property를 그대로 넣고 light color만 texture color를 넣는 것이다!! 
+    R = normalize(2 * dot(N, vR) * N - vR);
+    float3 color2 = PhongLighting2(vR,N,R,V,
+        mtcAmbient, mtcDiffuse, mtcSpec, shine,
+        texColor);
+    return float4(saturate(color1 + color2), 1);
 }
