@@ -1,8 +1,10 @@
 // practice_1.cpp : Defines the entry point for the application.
-//
+// 
 
 #include "framework.h"
-#include "practice_1.h"
+#include "Practice.h"
+#include "stl_reader.h"
+#include "stb_image.h"
 
 #include <windowsx.h>
 #include <stdio.h>
@@ -36,17 +38,32 @@ ID3D11DeviceContext* g_pImmediateContext = nullptr;
 IDXGISwapChain* g_pSwapChain = nullptr;
 ID3D11RenderTargetView* g_pRenderTargetView = nullptr;
 
+ID3D11VertexShader* g_pVertexShaderP = nullptr;
 ID3D11VertexShader* g_pVertexShaderPCN = nullptr;
 ID3D11VertexShader* g_pVertexShaderPNT = nullptr;
-ID3D11PixelShader* g_pPixelShader1 = nullptr;
-ID3D11PixelShader* g_pPixelShader2 = nullptr;
+ID3D11InputLayout* g_pIALayoutP = nullptr;
 ID3D11InputLayout* g_pIALayoutPCN = nullptr;
 ID3D11InputLayout* g_pIALayoutPNT = nullptr;
+
+ID3D11PixelShader* g_pPixelShader1 = nullptr;
+ID3D11PixelShader* g_pPixelShader2 = nullptr;
+ID3D11PixelShader* g_pPixelShader3 = nullptr;
+ID3D11PixelShader* g_pPixelShader4 = nullptr;
+
 ID3D11Buffer* g_pVertexBuffer_cube = nullptr;
-ID3D11Buffer* g_pVertexBuffer_sphere = nullptr;
+ID3D11Buffer* g_pNormalBuffer_cube = nullptr;
 ID3D11Buffer* g_pIndexBuffer_cube = nullptr;
+ID3D11ShaderResourceView* g_pSRV_cube = nullptr;
+ID3D11Buffer* g_pVertexBuffer_stl = nullptr;
+ID3D11Buffer* g_pNormalBuffer_stl = nullptr;
+ID3D11Buffer* g_pIndexBuffer_stl = nullptr;
+ID3D11ShaderResourceView* g_pSRV_stl = nullptr;
+ID3D11Buffer* g_pVertexBuffer_sphere = nullptr;
 ID3D11Buffer* g_pIndexBuffer_sphere = nullptr;
-ID3D11Buffer* g_pCB_TransformWorld = nullptr;
+
+ID3D11SamplerState* g_samplerTex2D = nullptr;
+ID3D11Texture2D* g_texEnvMap = nullptr;
+ID3D11ShaderResourceView* g_tSRVEnvMap = nullptr;
 
 ID3D11Texture2D* g_pDepthStencil = nullptr;
 ID3D11DepthStencilView* g_pDepthStencilView = nullptr;
@@ -54,14 +71,17 @@ ID3D11DepthStencilView* g_pDepthStencilView = nullptr;
 ID3D11RasterizerState* g_pRSState = nullptr;
 ID3D11DepthStencilState* g_pDSState = nullptr;
 
+ID3D11Buffer* g_pCB_TransformWorld = nullptr;
 ID3D11Buffer* g_pCB_Lights = nullptr;
 Vector3 g_pos_light;
 Vector3 g_pos_eye, g_pos_at, g_vec_up;
+
 struct MyObject {
 public:
 	// resources //
 	ID3D11Buffer* pVBuffer;
 	ID3D11Buffer* pIBuffer;
+	ID3D11ShaderResourceView* pSRViewNormal;  
 	ID3D11InputLayout* pIALayer;
 	ID3D11VertexShader* pVShader;
 	ID3D11PixelShader* pPShader;
@@ -78,9 +98,9 @@ public:
 	MyObject() {
 		ZeroMemory(this, sizeof(MyObject));
 	}
-
+ 
 	MyObject(
-		const ID3D11Buffer* pVBuffer_, const ID3D11Buffer* pIBuffer_,
+		const ID3D11Buffer* pVBuffer_, const ID3D11Buffer* pIBuffer_, const ID3D11ShaderResourceView* pSRViewNormal_, 
 		const ID3D11InputLayout* pIALayer_, const ID3D11VertexShader* pVShader_, const ID3D11PixelShader* pPShader_,
 		const ID3D11RasterizerState* pRSState_, const ID3D11DepthStencilState* pDSState_,
 		const UINT vb_stride_, const UINT ib_stride_, const int drawCount_, const Matrix &mModel_,
@@ -92,6 +112,7 @@ public:
 		pPShader = (ID3D11PixelShader*)pPShader_;
 		pRSState = (ID3D11RasterizerState*)pRSState_;
 		pDSState = (ID3D11DepthStencilState*)pDSState_;
+		pSRViewNormal = (ID3D11ShaderResourceView*)pSRViewNormal_; 
 		vb_stride = vb_stride_;
 		ib_stride = ib_stride_;
 		drawCount = drawCount_;
@@ -107,7 +128,7 @@ public:
 		bd.ByteWidth = sizeof(Matrix) + 4 * 4; // MUST BE times of 16
 		bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 		bd.CPUAccessFlags = 0;
-		HRESULT hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &pConstBuffer);
+		HRESULT hr = g_pd3dDevice->CreateBuffer(&bd, nullptr, &pConstBuffer); 
 		if (FAILED(hr))
 			MessageBoxA(NULL, "Constant Buffer of A MODEL ERROR", "ERROR", MB_OK);
 	}
@@ -115,24 +136,27 @@ public:
 	void UpdateConstanceBuffer() {
 		struct ModelConst {
 			Matrix mModel;
-			DirectX::PackedVector::XMUBYTEN4 mtAmbient, mtDiffuse, mtSpec;
-			float shininess;
+			DirectX::PackedVector::XMUBYTEN4 mtAmbient, mtDiffuse, mtSpec; // 4 4 4 
+			float shininess; // 4 => 16 
 		};
 		ModelConst data = { mModel.Transpose() , mtAmbient.RGBA() , mtDiffuse.RGBA() , mtSpec.RGBA() , shininess };
 		g_pImmediateContext->UpdateSubresource(pConstBuffer, 0, nullptr, &data, 0, 0);
 	}
+
 	ID3D11Buffer* GetConstantBuffer() {
 		return pConstBuffer;
 	}
+
 	void Delete() {
 		if (pConstBuffer) pConstBuffer->Release();
 	}
 
 private:
-	// local resource //
 	ID3D11Buffer* pConstBuffer; // transform, material colors...
 };
 
+// map standard library 
+// std::string -> index, key // Myobject -> value 
 std::map<std::string, MyObject> g_sceneObjs;
 
 // http://www.songho.ca/opengl/gl_sphere.html
@@ -155,18 +179,18 @@ void GenerateSphere(const float radius, const int sectorCount, const int stackCo
 	for (int i = 0; i <= stackCount; ++i)
 	{
 		stackAngle = DirectX::XM_PI / 2 - i * stackStep;        // starting from pi/2 to -pi/2
-		xy = radius * cosf(stackAngle);             // r * cos(u)
-		z = radius * sinf(stackAngle);              // r * sin(u)
+		xy = radius * cosf(stackAngle);							// r * cos(u)
+		z = radius * sinf(stackAngle);							// r * sin(u)
 
 		// add (sectorCount+1) vertices per stack
 		// the first and last vertices have same position and normal, but different tex coords
 		for (int j = 0; j <= sectorCount; ++j)
 		{
-			sectorAngle = j * sectorStep;           // starting from 0 to 2pi
+			sectorAngle = j * sectorStep;						// starting from 0 to 2pi
 
 			// vertex position (x, y, z)
-			x = xy * cosf(sectorAngle);             // r * cos(u) * cos(v)
-			y = xy * sinf(sectorAngle);             // r * cos(u) * sin(v)
+			x = xy * cosf(sectorAngle);							// r * cos(u) * cos(v)
+			y = xy * sinf(sectorAngle);							// r * cos(u) * sin(v)
 			positions.push_back(x);
 			positions.push_back(y);
 			positions.push_back(z);
@@ -254,11 +278,13 @@ struct CB_Object
 
 struct CB_Lights
 {
-	Vector3 posLight;
-	DirectX::PackedVector::XMUBYTEN4 lightColor; // int
+	Vector3 posLight;							 
+	DirectX::PackedVector::XMUBYTEN4 lightColor; // int, light color는 int형 4byte로 두고 각각의 byte에 RGBA값을 넣음 
 
-	Vector3 dirLight;
-	int lightFlag;
+	Vector3 dirLight;							 // directional light의 direction을 저장하는 vector 
+	int lightFlag;								 
+
+	Matrix mView2EnvOS;
 };
 
 struct CubeVertex
@@ -293,11 +319,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
-	// TODO: Place code here.
-
 	// Initialize global strings
 	LoadStringW(hInstance, IDS_APP_TITLE, g_szTitle, MAX_LOADSTRING);
-	LoadStringW(hInstance, IDC_PRACTICE1, g_szWindowClass, MAX_LOADSTRING);
+	LoadStringW(hInstance, IDC_PRACTICE, g_szWindowClass, MAX_LOADSTRING);
 
 	if (FAILED(InitWindow(hInstance, nCmdShow)))
 		return 0;
@@ -354,10 +378,10 @@ HRESULT InitWindow(HINSTANCE hInstance, int nCmdShow)
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
 	wcex.hInstance = hInstance;
-	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_PRACTICE1));
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_PRACTICE));
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_PRACTICE1);
+	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_PRACTICE);
 	wcex.lpszClassName = g_szWindowClass;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 
@@ -594,14 +618,14 @@ HRESULT Recompile(bool generateIALayout)
 {
 	HRESULT hr = S_OK;
 	// Compile the vertex shader
-	ID3DBlob *pVSBlobPCN = nullptr, *pVSBlobPNT = nullptr;
+	ID3DBlob *pVSBlobPCN = nullptr, *pVSBlobPNT = nullptr, *pVSBlobP = nullptr;
 	
 	auto CreateShader = [](const std::string& shaderName, const std::string& shaderProfile, ID3DBlob **ppShaderBlob,
 		ID3D11DeviceChild **ppShader)
 	{
 		if (shaderProfile != "vs_4_0" && shaderProfile != "ps_4_0") return E_FAIL;
 
-		HRESULT hr = CompileShaderFromFile(L"Shaders_6.hlsl", shaderName.c_str(), shaderProfile.c_str(), ppShaderBlob);
+		HRESULT hr = CompileShaderFromFile(L"shader_2018204094_박형빈.hlsl", shaderName.c_str(), shaderProfile.c_str(), ppShaderBlob);
 		if (FAILED(hr))
 		{
 			MessageBoxA(nullptr, (std::string("Shader Compiler Error!! ") + shaderName + " " + shaderProfile).c_str(), "Error!!", MB_OK);
@@ -626,6 +650,7 @@ HRESULT Recompile(bool generateIALayout)
 
 	hr |= CreateShader("VS_PCN", "vs_4_0", &pVSBlobPCN, (ID3D11DeviceChild**)&g_pVertexShaderPCN);
 	hr |= CreateShader("VS_PNT", "vs_4_0", &pVSBlobPNT, (ID3D11DeviceChild**)&g_pVertexShaderPNT);
+	hr |= CreateShader("VS_P", "vs_4_0", &pVSBlobP, (ID3D11DeviceChild**)&g_pVertexShaderP);
 
 	if (generateIALayout && SUCCEEDED(hr)) {
 		// Define the input layout
@@ -649,16 +674,31 @@ HRESULT Recompile(bool generateIALayout)
 		numElements = ARRAYSIZE(layout_PNT);
 		// Create the input layout
 		hr |= g_pd3dDevice->CreateInputLayout(layout_PNT, numElements, pVSBlobPNT->GetBufferPointer(), pVSBlobPNT->GetBufferSize(), &g_pIALayoutPNT);
+
+		// Define the input layout
+		D3D11_INPUT_ELEMENT_DESC layout_P[] =
+		{
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		};
+		numElements = ARRAYSIZE(layout_P);
+		// Create the input layout
+		hr |= g_pd3dDevice->CreateInputLayout(layout_P, numElements, pVSBlobP->GetBufferPointer(), pVSBlobP->GetBufferSize(), &g_pIALayoutP);
 	}
 
 	if (pVSBlobPCN) pVSBlobPCN->Release();
 	if (pVSBlobPNT) pVSBlobPNT->Release();
+	if (pVSBlobP) pVSBlobP->Release();   
 	
-	ID3DBlob *pPSBlob1 = nullptr, *pPSBlob2 = nullptr;
+	ID3DBlob *pPSBlob1 = nullptr, *pPSBlob2 = nullptr, * pPSBlob3 = nullptr, * pPSBlob4 = nullptr;
 	hr |= CreateShader("PS1", "ps_4_0", &pPSBlob1, (ID3D11DeviceChild**)&g_pPixelShader1);
 	hr |= CreateShader("PS2", "ps_4_0", &pPSBlob2, (ID3D11DeviceChild**)&g_pPixelShader2);
+	hr |= CreateShader("PS3", "ps_4_0", &pPSBlob3, (ID3D11DeviceChild**)&g_pPixelShader3);
+	hr |= CreateShader("PS4", "ps_4_0", &pPSBlob4, (ID3D11DeviceChild**)&g_pPixelShader4);
+
 	if (pPSBlob1) pPSBlob1->Release();
 	if (pPSBlob2) pPSBlob2->Release();
+	if (pPSBlob3) pPSBlob3->Release();
+	if (pPSBlob4) pPSBlob4->Release();
 
 	return hr;
 }
@@ -806,7 +846,7 @@ HRESULT InitDevice()
 #pragma endregion Create Shader
 
 
-	int indices_cube = 0, indices_sphere = 0;
+	int indices_cube = 0, indices_stl = 0, indices_sphere = 0;
 #pragma region Create a cube
 	{
 		CubeVertex vertices[] =
@@ -820,6 +860,7 @@ HRESULT InitDevice()
 			{ Vector3(0.5f, -0.5f, 0.5f), Vector4(1.0f, 1.0f, 1.0f, 1.0f), Vector3() },
 			{ Vector3(-0.5f, -0.5f, 0.5f), Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector3() },
 		};
+
 		for (int i = 0; i < 8; i++)
 		{
 			CubeVertex& vtx = vertices[i];
@@ -827,8 +868,8 @@ HRESULT InitDevice()
 			vtx.Nor.Normalize();
 		}
 
-		D3D11_BUFFER_DESC bd = {}; // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_buffer_desc
-		bd.Usage = D3D11_USAGE_IMMUTABLE; // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_usage 
+		D3D11_BUFFER_DESC bd = {};			 // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_buffer_desc
+		bd.Usage = D3D11_USAGE_IMMUTABLE;	 // https://docs.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_usage 
 		bd.ByteWidth = sizeof(CubeVertex) * ARRAYSIZE(vertices);
 		bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 		bd.CPUAccessFlags = 0;
@@ -839,29 +880,28 @@ HRESULT InitDevice()
 		if (FAILED(hr))
 			return hr;
 
-		// Create index buffer
 		WORD indices[] =
 		{
-			3,1,0,
-			2,1,3,
+			3,1,0,  // 두 개의 삼각형 -> 하나의 face 
+			2,1,3,  // +y
 
 			0,5,4,
-			1,5,0,
+			1,5,0,  // -z
 
 			3,4,7,
-			0,4,3,
+			0,4,3,  // -x
 
 			1,6,5,
-			2,6,1,
+			2,6,1,  // +x
 
 			2,7,6,
-			3,7,2,
+			3,7,2,  // +Z
 
 			6,4,5,
-			7,4,6, 
+			7,4,6,  // -y
 		};
 		indices_cube = ARRAYSIZE(indices);
-		
+
 		bd.Usage = D3D11_USAGE_DEFAULT;
 		bd.ByteWidth = sizeof(WORD) * indices_cube;        // 36 vertices needed for 12 triangles in a triangle list
 		bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
@@ -870,14 +910,84 @@ HRESULT InitDevice()
 		hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pIndexBuffer_cube);
 		if (FAILED(hr))
 			return hr;
-	}
 
+		Vector3 cubeFaceNormals[] = {
+		  Vector3(0.f,1.f,0.f),Vector3(0.f,1.f,0.f), Vector3(0.f,0.f,-1.f),Vector3(0.f,0.f,-1.f), Vector3(-1.f,0.f,0.f),Vector3(-1.f,0.f,0.f),
+		  Vector3(1.f,0.f,0.f),Vector3(1.f,0.f,0.f), Vector3(0.f,0.f,1.f),Vector3(0.f,0.f,1.f), Vector3(0.f,-1.f,0.f),Vector3(0.f,-1.f,0.f),
+		};
+
+		bd.ByteWidth = sizeof(Vector3) * 12;
+		bd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+		InitData.pSysMem = cubeFaceNormals;
+		hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pNormalBuffer_cube);
+		if (FAILED(hr))
+			return hr;
+
+		D3D11_SHADER_RESOURCE_VIEW_DESC dcSrv = {};
+		dcSrv.Format = DXGI_FORMAT::DXGI_FORMAT_R32G32B32_FLOAT; 
+		dcSrv.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;		
+		dcSrv.BufferEx.FirstElement = 0;
+		dcSrv.BufferEx.NumElements = 12;
+		hr = g_pd3dDevice->CreateShaderResourceView(g_pNormalBuffer_cube, &dcSrv, &g_pSRV_cube);
+		if (FAILED(hr))
+			return hr;
+	}
 #pragma endregion
+
+#pragma region Load a STL
+	{
+		stl_reader::StlMesh <float, unsigned int> mesh("Armadillo2.stl");
+		const float* raw_coords = mesh.raw_coords();    
+		const float* raw_normals = mesh.raw_normals();
+		const unsigned int* raw_tris = mesh.raw_tris(); 
+
+		D3D11_BUFFER_DESC bd = {};
+		bd.Usage = D3D11_USAGE_IMMUTABLE;
+		bd.ByteWidth = sizeof(Vector3) * mesh.num_vrts();
+		bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+		bd.CPUAccessFlags = 0;
+
+		D3D11_SUBRESOURCE_DATA InitData = {};
+		InitData.pSysMem = raw_coords;										
+		hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pVertexBuffer_stl);
+		if (FAILED(hr))
+			return hr;
+
+		indices_stl = mesh.num_tris() * 3;
+		// Index Buffer 
+		bd.Usage = D3D11_USAGE_DEFAULT;
+		bd.ByteWidth = sizeof(UINT) * indices_stl;        // 36 vertices needed for 12 triangles in a triangle list
+		bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+		bd.CPUAccessFlags = 0;
+		InitData.pSysMem = raw_tris;
+		hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pIndexBuffer_stl);
+		if (FAILED(hr))
+			return hr;
+
+		bd.ByteWidth = sizeof(Vector3) * mesh.num_tris();
+		bd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+		InitData.pSysMem = raw_normals;
+		hr = g_pd3dDevice->CreateBuffer(&bd, &InitData, &g_pNormalBuffer_stl);
+		if (FAILED(hr))
+			return hr;
+
+		D3D11_SHADER_RESOURCE_VIEW_DESC dcSrv = {};
+		dcSrv.Format = DXGI_FORMAT::DXGI_FORMAT_R32G32B32_FLOAT;
+		dcSrv.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
+		dcSrv.BufferEx.FirstElement = 0;
+		dcSrv.BufferEx.NumElements = mesh.num_tris();
+		hr = g_pd3dDevice->CreateShaderResourceView(g_pNormalBuffer_stl, &dcSrv, &g_pSRV_stl);
+		if (FAILED(hr))
+			return hr;
+	}
+#pragma endregion
+
 
 #pragma region Create a sphere
 	{
 		std::vector<float> position, normal, texcoord;
 		const int stackCount = 100, sectorCount = 100;
+
 		GenerateSphere(0.5f, sectorCount, stackCount, position, normal, texcoord);
 		std::cout << "# of position: " << position.size() / 3 << ", # of normal: " << normal.size() / 3 << ", # of texcoord: "
 			<< texcoord.size() / 2 << std::endl;
@@ -904,7 +1014,7 @@ HRESULT InitDevice()
 
 		D3D11_SUBRESOURCE_DATA InitData = {};
 		InitData.pSysMem = &verticesSphere[0];
-		hr = g_pd3dDevice->CreateBuffer(&bd_sphere, &InitData, &g_pVertexBuffer_sphere);
+		hr = g_pd3dDevice->CreateBuffer(&bd_sphere, &InitData, &g_pVertexBuffer_sphere); 
 		if (FAILED(hr))
 			return hr;
 
@@ -918,7 +1028,7 @@ HRESULT InitDevice()
 		bd_sphere.BindFlags = D3D11_BIND_INDEX_BUFFER;
 		bd_sphere.CPUAccessFlags = 0;
 		InitData.pSysMem = &sphereIndices[0];
-		hr = g_pd3dDevice->CreateBuffer(&bd_sphere, &InitData, &g_pIndexBuffer_sphere);
+		hr = g_pd3dDevice->CreateBuffer(&bd_sphere, &InitData, &g_pIndexBuffer_sphere); 
 		if (FAILED(hr))
 			return hr;
 	}
@@ -927,10 +1037,10 @@ HRESULT InitDevice()
 	// Create the constant buffer
 	D3D11_BUFFER_DESC bdCB = {};
 	bdCB.Usage = D3D11_USAGE_DEFAULT;
-	bdCB.ByteWidth = sizeof(CB_TransformScene);
+	bdCB.ByteWidth = sizeof(CB_TransformScene);							 
 	bdCB.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	bdCB.CPUAccessFlags = 0;
-	hr = g_pd3dDevice->CreateBuffer(&bdCB, nullptr, &g_pCB_TransformWorld);
+	hr = g_pd3dDevice->CreateBuffer(&bdCB, nullptr, &g_pCB_TransformWorld); 
 	if (FAILED(hr))
 		return hr;
 
@@ -942,25 +1052,72 @@ HRESULT InitDevice()
 	if (FAILED(hr))
 		return hr;
 
+#pragma region Env Mapping
+	int w, h, n;
+	unsigned char* img = stbi_load("envmap.jpg", &w, &h, &n, 0);
+	unsigned char* img_rgba = new unsigned char[w * h * 4];
+	for (int y = 0; y < h; y++)
+		for (int x = 0; x < w; x++) {
+			img_rgba[4 * (w * y + x) + 0] = img[3 * (w * y + x) + 0];
+			img_rgba[4 * (w * y + x) + 1] = img[3 * (w * y + x) + 1];
+			img_rgba[4 * (w * y + x) + 2] = img[3 * (w * y + x) + 2];
+			img_rgba[4 * (w * y + x) + 3] = (unsigned char)255;
+		}
+
+	D3D11_TEXTURE2D_DESC dcTex2D = {};
+	dcTex2D.Width = w;
+	dcTex2D.Height = h;
+	dcTex2D.Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM;
+	dcTex2D.ArraySize = 1;
+	dcTex2D.MipLevels = 1;  
+	dcTex2D.SampleDesc.Count = 1;
+	dcTex2D.SampleDesc.Quality = 0;
+	dcTex2D.Usage = D3D11_USAGE_IMMUTABLE;
+	dcTex2D.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+	dcTex2D.CPUAccessFlags = 0;
+	dcTex2D.MiscFlags = 0;
+
+	D3D11_SUBRESOURCE_DATA InitTex2DData;
+	InitTex2DData.pSysMem = img_rgba;
+	InitTex2DData.SysMemPitch = w * 4;
+	InitTex2DData.SysMemSlicePitch = 0;
+	hr = g_pd3dDevice->CreateTexture2D(&dcTex2D, &InitTex2DData, &g_texEnvMap);
+	delete[] img_rgba;
+	if (FAILED(hr)) {
+		return hr;
+	}
+
+	D3D11_SHADER_RESOURCE_VIEW_DESC dcTexSRV = {};
+	dcTexSRV.Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM;
+	dcTexSRV.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D; 
+	dcTexSRV.Texture2D.MipLevels = 1;
+	dcTexSRV.Texture2D.MostDetailedMip = 0;
+	hr = g_pd3dDevice->CreateShaderResourceView(g_texEnvMap, &dcTexSRV, &g_tSRVEnvMap);
+	if (FAILED(hr)) {
+		return hr;
+	}
+
+#pragma endregion 
+
 #pragma region Transform Setting
 	g_pos_light = Vector3(0, 8, 0);
 
 	g_mWorld_cube = Matrix::CreateScale(10.f);
-	g_mWorld_sphere = Matrix::CreateScale(2.f) * Matrix::CreateTranslation(g_pos_light);
+	g_mWorld_sphere = Matrix::CreateScale(2.f) * Matrix::CreateTranslation(g_pos_light); 
 
 	g_pos_eye = Vector3(0.0f, 0.0f, 20.0f);
 	g_pos_at = Vector3(0.0f, 0.0f, 0.0f);
 	g_vec_up = Vector3(0.0f, 1.0f, 0.0f);
 	g_mView = Matrix::CreateLookAt(g_pos_eye, g_pos_at, g_vec_up);
 
-	g_mProjection = Matrix::CreatePerspectiveFieldOfView(DirectX::XM_PIDIV2, width / (FLOAT)height, 0.01f, 100.0f);
+	g_mProjection = Matrix::CreatePerspectiveFieldOfView(DirectX::XM_PIDIV2, width / (FLOAT)height, 0.01f, 1000.0f);
 #pragma endregion
 
-#pragma region States
+#pragma region States 
 	D3D11_RASTERIZER_DESC descRaster;
 	ZeroMemory(&descRaster, sizeof(D3D11_RASTERIZER_DESC));
 	descRaster.FillMode = D3D11_FILL_SOLID;
-	descRaster.CullMode = D3D11_CULL_BACK;
+	descRaster.CullMode = D3D11_CULL_NONE; // BACK > NONE
 	descRaster.FrontCounterClockwise = true;
 	descRaster.DepthBias = 0;
 	descRaster.DepthBiasClamp = 0;
@@ -985,13 +1142,42 @@ HRESULT InitDevice()
 	hr = g_pd3dDevice->CreateDepthStencilState(&descDepthStencil, &g_pDSState);
 #pragma endregion
 
-	g_sceneObjs["CUBE"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader1,
+	D3D11_SAMPLER_DESC dcSample = {};
+	dcSample.Filter = D3D11_FILTER::D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	dcSample.AddressU = D3D11_TEXTURE_ADDRESS_MODE::D3D11_TEXTURE_ADDRESS_WRAP;
+	dcSample.AddressV = D3D11_TEXTURE_ADDRESS_MODE::D3D11_TEXTURE_ADDRESS_WRAP;
+	dcSample.AddressW = D3D11_TEXTURE_ADDRESS_MODE::D3D11_TEXTURE_ADDRESS_WRAP;
+	*(Vector4*)&dcSample.BorderColor = Vector4();
+	dcSample.MipLODBias = 0;
+	dcSample.MaxAnisotropy = 16;
+	dcSample.MinLOD = 0;
+	dcSample.MaxLOD = D3D11_FLOAT32_MAX;
+	dcSample.ComparisonFunc = D3D11_COMPARISON_NEVER;
+	hr = g_pd3dDevice->CreateSamplerState(&dcSample, &g_samplerTex2D);
+	if (FAILED(hr)) {
+		return hr;
+	}
+
+	g_sceneObjs["STL"] = MyObject(g_pVertexBuffer_stl, g_pIndexBuffer_stl, g_pSRV_stl, g_pIALayoutP, g_pVertexShaderP, g_pPixelShader4,
+		g_pRSState, g_pDSState, sizeof(Vector3), sizeof(UINT), indices_stl,
+		Matrix::CreateScale(1.f / 12.f) * Matrix::CreateTranslation(-10.f, 0, 0), Color(0.1f, 0.1f, 0.1f), Color(0.7f, 0.7f, 0.7f), Color(0.2f, 0.2f, 0.2f), 10.f);
+
+	g_sceneObjs["CUBE"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, g_pSRV_cube, g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader4,
 		g_pRSState, g_pDSState, sizeof(CubeVertex), sizeof(WORD), indices_cube,
 		g_mWorld_cube, Color(0.1f, 0.1f, 0.1f), Color(0.7f, 0.7f, 0), Color(0.2f, 0, 0.2f), 10.f);
 
-	g_sceneObjs["SPHERE"] = MyObject(g_pVertexBuffer_sphere, g_pIndexBuffer_sphere, g_pIALayoutPNT, g_pVertexShaderPNT, g_pPixelShader2,
+	g_sceneObjs["CUBE_2"] = MyObject(g_pVertexBuffer_cube, g_pIndexBuffer_cube, NULL,g_pIALayoutPCN, g_pVertexShaderPCN, g_pPixelShader1, // face normal vector가 없음 -> NULL 
+		g_pRSState, g_pDSState, sizeof(CubeVertex), sizeof(WORD), indices_cube,
+		Matrix::CreateScale(5.f) * Matrix::CreateTranslation(10.f, 0, 0), Color(0.1f, 0.1f, 0.1f), Color(0, 0.7f, 0.7f), Color(0.2f, 0, 0.2f), 10.f);
+
+	g_sceneObjs["SPHERE"] = MyObject(g_pVertexBuffer_sphere, g_pIndexBuffer_sphere, NULL, g_pIALayoutPNT, g_pVertexShaderPNT, g_pPixelShader2,
 		g_pRSState, g_pDSState, sizeof(SphereVertex), sizeof(UINT), indices_sphere,
 		g_mWorld_sphere, Color(1.f, 1.f, 1.f), Color(), Color(), 1.f);
+
+	Matrix matR = Matrix::CreateLookAt(Vector3(0, 0, 0), Vector3(0, -1, 0), Vector3(0, 0, 1));
+	g_sceneObjs["SPHERE_ENV"] = MyObject(g_pVertexBuffer_sphere, g_pIndexBuffer_sphere, NULL, g_pIALayoutPNT, g_pVertexShaderPNT, g_pPixelShader3,
+		g_pRSState, g_pDSState, sizeof(SphereVertex), sizeof(UINT), indices_sphere,
+		matR * Matrix::CreateScale(500.f), Color(1.f, 1.f, 1.f), Color(), Color(), 1.f);
 
 	return hr;
 }
@@ -1001,34 +1187,47 @@ HRESULT InitDevice()
 //--------------------------------------------------------------------------------------
 void Render()
 {
+	g_pImmediateContext->PSSetSamplers(0, 1, &g_samplerTex2D);
+
 #pragma region Common Scene (World)
 	CB_TransformScene cbTransformScene;
 	cbTransformScene.mView = g_mView.Transpose();
 	cbTransformScene.mProjection = g_mProjection.Transpose();
 	g_pImmediateContext->UpdateSubresource(g_pCB_TransformWorld, 0, nullptr, &cbTransformScene, 0, 0);
-	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pCB_TransformWorld);
+	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pCB_TransformWorld);				
+	g_pImmediateContext->PSSetConstantBuffers(0, 1, &g_pCB_TransformWorld);				
 
 	CB_Lights cbLight;
 	cbLight.posLight = Vector3::Transform(g_pos_light, g_mView);
 	cbLight.dirLight = Vector3::TransformNormal(Vector3(0, 1, 0), g_mView);
 	cbLight.dirLight.Normalize();
-	cbLight.lightColor = Color(1, 1, 0, 1).RGBA();
+	cbLight.lightColor = Color(1, 1, 1, 1).RGBA();
 	cbLight.lightFlag = 0;
+
+	Matrix mView2World = g_mView.Invert();
+	MyObject& envSphere = g_sceneObjs["SPHERE_ENV"];
+	Matrix mWorld2EnvSphere = envSphere.mModel.Invert();
+	cbLight.mView2EnvOS = (mView2World * mWorld2EnvSphere).Transpose();
+
 	g_pImmediateContext->UpdateSubresource(g_pCB_Lights, 0, nullptr, &cbLight, 0, 0);
-	g_pImmediateContext->VSSetConstantBuffers(2, 1, &g_pCB_Lights);
+	//g_pImmediateContext->VSSetConstantBuffers(2, 1, &g_pCB_Lights);
 	g_pImmediateContext->PSSetConstantBuffers(2, 1, &g_pCB_Lights);
+
+	g_pImmediateContext->PSSetShaderResources(1, 1, &g_tSRVEnvMap);
 
 	// Just clear the backbuffer
 	g_pImmediateContext->ClearRenderTargetView(g_pRenderTargetView, DirectX::Colors::MidnightBlue);
 
 	// Clear the depth buffer to 1.0 (max depth) 
 	g_pImmediateContext->ClearDepthStencilView(g_pDepthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0);
+
 #pragma endregion Common Scene (World)
 
 	for (auto& pair : g_sceneObjs)
 	{
-		//if (pair.first == "CUBE") continue;
+		//if (pair.first == "CUBE") continue; 
 		MyObject& obj = pair.second;
+
 #pragma region For Each Object
 		// Set vertex buffer
 		UINT stride = obj.vb_stride;
@@ -1036,10 +1235,10 @@ void Render()
 		g_pImmediateContext->IASetInputLayout(obj.pIALayer);
 		g_pImmediateContext->IASetVertexBuffers(0, 1, &obj.pVBuffer, &stride, &offset); // g_pVertexBuffer_sphere
 		// Set index buffer
-		switch (obj.ib_stride)
+		switch (obj.ib_stride)  
 		{
 		case 2:
-			g_pImmediateContext->IASetIndexBuffer(obj.pIBuffer, DXGI_FORMAT_R16_UINT, 0); break;
+			g_pImmediateContext->IASetIndexBuffer(obj.pIBuffer, DXGI_FORMAT_R16_UINT, 0); break; 
 		case 4:
 			g_pImmediateContext->IASetIndexBuffer(obj.pIBuffer, DXGI_FORMAT_R32_UINT, 0); break;
 		default:
@@ -1051,6 +1250,10 @@ void Render()
 		obj.UpdateConstanceBuffer();
 		ID3D11Buffer* pCBuffer = obj.GetConstantBuffer();
 		g_pImmediateContext->VSSetConstantBuffers(1, 1, &pCBuffer);
+		g_pImmediateContext->PSSetConstantBuffers(1, 1, &pCBuffer);
+
+		if (obj.pSRViewNormal)
+			g_pImmediateContext->PSSetShaderResources(0, 1, &obj.pSRViewNormal);
 
 		g_pImmediateContext->RSSetState(obj.pRSState);
 		g_pImmediateContext->OMSetDepthStencilState(obj.pDSState, 0);
@@ -1058,7 +1261,8 @@ void Render()
 		// Render a triangle
 		g_pImmediateContext->VSSetShader(obj.pVShader, nullptr, 0);
 		g_pImmediateContext->PSSetShader(obj.pPShader, nullptr, 0);
-		
+		 
+		//g_pImmediateContext->DrawImndexed(6,0,0);
 		if (obj.pIBuffer)
 			g_pImmediateContext->DrawIndexed(obj.drawCount, 0, 0);
 		else 
@@ -1079,19 +1283,38 @@ void CleanupDevice()
 	g_sceneObjs.clear(); 
 
 	if (g_pImmediateContext) g_pImmediateContext->ClearState();
+	if (g_samplerTex2D) g_samplerTex2D->Release();
 
 	if (g_pCB_TransformWorld) g_pCB_TransformWorld->Release();
 	if (g_pCB_Lights) g_pCB_Lights->Release();
+
 	if (g_pIndexBuffer_cube) g_pIndexBuffer_cube->Release();
+	if (g_pIndexBuffer_stl) g_pIndexBuffer_stl->Release();
 	if (g_pIndexBuffer_sphere) g_pIndexBuffer_sphere->Release();
+
 	if (g_pVertexBuffer_cube) g_pVertexBuffer_cube->Release();
+	if (g_pSRV_cube) g_pSRV_cube->Release();
+	if (g_pNormalBuffer_cube) g_pNormalBuffer_cube->Release();
+
+	if (g_pVertexBuffer_stl) g_pVertexBuffer_stl->Release();
+	if (g_pSRV_stl) g_pSRV_stl->Release();
+	if (g_pNormalBuffer_stl) g_pNormalBuffer_stl->Release();
+
 	if (g_pVertexBuffer_sphere) g_pVertexBuffer_sphere->Release();
+	
 	if (g_pIALayoutPCN) g_pIALayoutPCN->Release();
 	if (g_pIALayoutPNT) g_pIALayoutPNT->Release();
+	if (g_pIALayoutP) g_pIALayoutP->Release();
 	if (g_pVertexShaderPCN) g_pVertexShaderPCN->Release();
 	if (g_pVertexShaderPNT) g_pVertexShaderPNT->Release();
+	if (g_pVertexShaderP) g_pVertexShaderP->Release();
 	if (g_pPixelShader1) g_pPixelShader1->Release();
 	if (g_pPixelShader2) g_pPixelShader2->Release();
+	if (g_pPixelShader2) g_pPixelShader3->Release();
+	if (g_pPixelShader2) g_pPixelShader4->Release();
+
+	if (g_texEnvMap) g_texEnvMap->Release();
+	if (g_tSRVEnvMap) g_tSRVEnvMap->Release();
 
 	if (g_pDepthStencilView) g_pDepthStencilView->Release();
 	if (g_pDepthStencil) g_pDepthStencil->Release();
